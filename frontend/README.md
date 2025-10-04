@@ -1,36 +1,200 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+🩺 AfyaNumeriq – Healthcare GRC Platform
 
-## Getting Started
+AfyaNumeriq is a Governance, Risk, and Compliance (GRC) platform designed to support healthcare organizations in implementing and internally auditing ISO 7101:2023 – Healthcare Quality Management Systems.
 
-First, run the development server:
+The platform helps hospitals and clinics manage risks, track compliance, and conduct internal audits in a structured, visual, and digital way — ensuring continual improvement and adherence to international healthcare quality standards.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+🚀 Current Project Status (Frontend MVP)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This repository contains the frontend of the AfyaNumeriq platform, built using modern web technologies to deliver a clean, responsive, and scalable user experience.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+✅ Completed Features
+1. Home Dashboard
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Displays summary widgets for:
 
-## Learn More
+Risk Register (open vs closed)
 
-To learn more about Next.js, take a look at the following resources:
+Compliance Maturity (visual donut chart)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Upcoming audits & reminders
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Dynamic layout powered by Recharts and Tailwind CSS
 
-## Deploy on Vercel
+2. Risk Register
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Full-featured risk table with the following fields:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Risk ID, Description, Likelihood, Impact, Risk Score, Risk Level, Existing Controls, Treatment Actions, Owner, Status, Review Date
+
+Add and update risks dynamically
+
+Color-coded status indicators (Open, Mitigated, Closed) THIS WILL AND SHOULD CHANGE!
+
+Backend-ready for future persistence
+
+3. Compliance Tracker (ISO 7101:2023)
+
+Includes all 34 clauses and subclauses of ISO 7101:2023
+
+Clause-by-clause compliance gauging:
+
+Status options: NI, P, IP, MI, O
+
+Evidence upload field
+
+Bottom legend explains the meaning of each status (NI → O)
+
+Structured for future database linkage
+
+4. Internal Audit Module
+
+/audit → Schedule, update, and track internal audits
+
+/audit/findings → Record and follow up on audit findings
+
+Status tracking for completed and pending audits
+
+Future integration planned for CAPA (Corrective and Preventive Actions)
+
+5. Reports Dashboard
+
+Summary view for:
+
+Risk status distribution
+
+Compliance scores
+
+Audit performance overview
+
+Will pull real-time metrics once backend integration is complete
+
+6. Settings
+
+Placeholder for:
+
+User management
+
+System settings
+
+Role-based permissions (to be added later)
+
+🧠 Architecture Overview
+
+Tech Stack:
+
+Next.js 15
+ (React-based full-stack framework)
+
+TypeScript
+ (typed JavaScript)
+
+Tailwind CSS
+ (utility-first styling)
+
+Zustand
+ (state management)
+
+Recharts
+ (data visualization)
+
+Folder Structure:
+
+frontend/
+├── src/
+│   ├── app/
+│   │   ├── audit/
+│   │   │   ├── findings/page.tsx
+│   │   │   └── page.tsx
+│   │   ├── compliance/page.tsx
+│   │   ├── risk/page.tsx
+│   │   ├── reports/page.tsx
+│   │   ├── settings/page.tsx
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── sidebar.tsx
+│   │   └── ui/button.tsx
+│   └── store/useAfyaStore.ts
+
+🔄 Integration Plan (Frontend ⇄ Backend)
+
+The backend will be implemented using Django REST Framework (DRF).
+
+Expected API endpoints:
+
+Feature	Endpoint	Methods
+Risk Register	/api/risks/	GET, POST, PUT, DELETE
+Compliance Tracker	/api/compliance/	GET, POST, PUT
+Internal Audits	/api/audits/	GET, POST, PUT
+Audit Findings	/api/findings/	GET, POST, PUT
+
+Frontend Integration Steps (once backend is ready):
+
+Add .env.local file:
+
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
+
+
+Replace the seeded data in useAfyaStore.ts with live data fetched from the API:
+
+useEffect(() => {
+  fetch(`${process.env.NEXT_PUBLIC_API_URL}/risks/`)
+    .then(res => res.json())
+    .then(data => set({ risks: data }));
+}, []);
+
+
+Apply similar logic for compliance, audits, and findings.
+
+🧩 State Management Overview
+
+The Zustand store (src/store/useAfyaStore.ts) maintains the following global state:
+
+{
+  risks: [],
+  audits: [],
+  findings: [],
+  complianceRecords: [],
+  addRisk(), updateRiskStatus(),
+  addAudit(), updateAuditStatus(),
+  addFinding(), updateFindingStatus(),
+  addCompliance(), updateComplianceStatus()
+}
+
+
+It acts as the single source of truth for all pages.
+Once the backend is connected, this store will hydrate its state from the REST API.
+
+🧭 Next Steps (for Fehn)
+
+Set up Django REST Framework with models corresponding to:
+
+Risk
+
+Compliance (ISO 7101 clauses)
+
+Audit
+
+AuditFinding
+
+Create serializers and CRUD API endpoints for each.
+
+Enable CORS for Next.js frontend (via django-cors-headers).
+
+Test data exchange using fetch requests or Postman.
+
+Provide endpoint URLs to integrate into the Zustand store.
+
+🧾 Contributors
+
+Frontend Development: Steve Wakhungu
+
+Backend Development: Fehn Nyabuto
+
+Design & Architecture: Joint collaboration under Nzasi Ventures Limited
+
+📜 License
+
+© 2025 AfyaNumeriq LLC. All rights reserved.
+Unauthorized reproduction or distribution of this software or its code is prohibited.
