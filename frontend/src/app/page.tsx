@@ -1,97 +1,206 @@
 "use client";
 
-import { PieChart, Pie, Cell } from "recharts";
+import Link from "next/link";
+import { useAfyaStore } from "@/store/useAfyaStore";
+import { Card, CardContent } from "@/components/ui/card";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
-const COLORS = ["#14b8a6", "#e5e7eb"]; // teal + light gray
-const complianceData = [
-  { name: "Compliance", value: 72 },
-  { name: "Remaining", value: 28 },
-];
+export default function Home() {
+  const { risks, audits, complianceRecords } = useAfyaStore();
 
-export default function HomePage() {
+  // --- Metrics ---
+  const totalRisks = risks.length;
+  const openRisks = risks.filter((r) => r.status !== "Closed").length;
+
+  const totalAudits = audits.length;
+  const completedAudits = audits.filter((a) => a.status === "Completed").length;
+
+  const scoreMap: Record<string, number> = {
+    NI: 0,
+    P: 25,
+    IP: 50,
+    MI: 75,
+    O: 100,
+  };
+  const complianceScores = complianceRecords.map(
+    (c) => scoreMap[c.status] || 0
+  );
+  const averageCompliance =
+    complianceScores.length > 0
+      ? (
+          complianceScores.reduce((a, b) => a + b, 0) / complianceScores.length
+        ).toFixed(1)
+      : 0;
+
+  const COLORS = ["#14b8a6", "#e5e7eb"];
+  const donutData = (val: number) => [
+    { name: "Done", value: val },
+    { name: "Remaining", value: 100 - val },
+  ];
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Dashboard</h1>
+    <div className="p-6 space-y-8">
+      <h1 className="text-3xl font-bold text-teal-700">
+        Welcome to AfyaNumeriq Dashboard
+      </h1>
+      <p className="text-gray-600">
+        Overview of key Healthcare Quality Management metrics.
+      </p>
 
-      {/* Top Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Compliance Status */}
-        <div className="p-6 border rounded-lg shadow bg-white flex flex-col items-center">
-          <h2 className="text-lg font-semibold mb-4">Compliance Status</h2>
-          <PieChart width={200} height={200}>
-            <Pie
-              data={complianceData}
-              cx="50%"
-              cy="50%"
-              innerRadius={70}
-              outerRadius={90}
-              paddingAngle={4}
-              dataKey="value"
-            >
-              {complianceData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index]} />
-              ))}
-            </Pie>
-          </PieChart>
-          <p className="text-2xl font-bold mt-2 text-teal-600">72%</p>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Risk Register */}
+        <Link href="/risk">
+          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
+            <CardContent className="p-6 text-center">
+              <h2 className="text-lg font-semibold text-gray-700 mb-2">
+                Risk Register
+              </h2>
+              <div className="w-28 h-28 mx-auto">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={donutData(
+                        totalRisks > 0
+                          ? ((openRisks / totalRisks) * 100).toFixed(1)
+                          : 0
+                      )}
+                      innerRadius={40}
+                      outerRadius={55}
+                      dataKey="value"
+                      paddingAngle={3}
+                    >
+                      {donutData(
+                        totalRisks > 0
+                          ? ((openRisks / totalRisks) * 100).toFixed(1)
+                          : 0
+                      ).map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-gray-500 text-sm mt-2">
+                {openRisks} Open / {totalRisks} Total
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Compliance */}
+        <Link href="/compliance">
+          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
+            <CardContent className="p-6 text-center">
+              <h2 className="text-lg font-semibold text-gray-700 mb-2">
+                Compliance Status
+              </h2>
+              <div className="w-28 h-28 mx-auto">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={donutData(Number(averageCompliance))}
+                      innerRadius={40}
+                      outerRadius={55}
+                      dataKey="value"
+                      paddingAngle={3}
+                    >
+                      {donutData(Number(averageCompliance)).map(
+                        (entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        )
+                      )}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-gray-500 text-sm mt-2">
+                {averageCompliance}% average
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Audits */}
-        <div className="p-6 border rounded-lg shadow bg-white">
-          <h2 className="text-lg font-semibold mb-4">Audits</h2>
-          <ul className="space-y-2 text-gray-700">
-            <li className="flex justify-between">
-              <span>Internal Audit</span>
-              <span className="text-sm text-gray-500">Due Jan 12</span>
-            </li>
-            <li className="flex justify-between">
-              <span>External Audit</span>
-              <span className="text-sm text-gray-500">Due Mar 04</span>
-            </li>
-          </ul>
-        </div>
+        <Link href="/audit">
+          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
+            <CardContent className="p-6 text-center">
+              <h2 className="text-lg font-semibold text-gray-700 mb-2">
+                Audits
+              </h2>
+              <div className="w-28 h-28 mx-auto">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={donutData(
+                        totalAudits > 0
+                          ? ((completedAudits / totalAudits) * 100).toFixed(1)
+                          : 0
+                      )}
+                      innerRadius={40}
+                      outerRadius={55}
+                      dataKey="value"
+                      paddingAngle={3}
+                    >
+                      {donutData(
+                        totalAudits > 0
+                          ? ((completedAudits / totalAudits) * 100).toFixed(1)
+                          : 0
+                      ).map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-gray-500 text-sm mt-2">
+                {completedAudits} Completed / {totalAudits} Total
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
 
-        {/* Reminders */}
-        <div className="p-6 border rounded-lg shadow bg-white">
-          <h2 className="text-lg font-semibold mb-4">Reminders</h2>
-          <ul className="space-y-2 text-gray-700">
-            <li>2 nonconformities pending closure</li>
-            <li>1 risk review due in 3 days</li>
-            <li>3 documents pending upload</li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Risk Register Preview */}
-      <div className="p-6 border rounded-lg bg-white shadow">
-        <h2 className="text-lg font-semibold mb-4">Risk Register (Preview)</h2>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b">
-              <th className="py-2">ID</th>
-              <th>Description</th>
-              <th>Likelihood</th>
-              <th>Impact</th>
-              <th>Owner</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b">
-              <td className="py-2">R001</td>
-              <td>Patient data breach</td>
-              <td>High</td>
-              <td>Critical</td>
-              <td>IT Manager</td>
-            </tr>
-            <tr className="border-b">
-              <td className="py-2">R002</td>
-              <td>Staff shortage in ER</td>
-              <td>Medium</td>
-              <td>High</td>
-              <td>HR</td>
-            </tr>
-          </tbody>
-        </table>
+        {/* Reports */}
+        <Link href="/reports">
+          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
+            <CardContent className="p-6 text-center">
+              <h2 className="text-lg font-semibold text-gray-700 mb-2">
+                Reports
+              </h2>
+              <div className="w-28 h-28 mx-auto">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={donutData(100)} // Always complete (Reports are summaries)
+                      innerRadius={40}
+                      outerRadius={55}
+                      dataKey="value"
+                      paddingAngle={3}
+                    >
+                      {donutData(100).map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-gray-500 text-sm mt-2">
+                View generated summaries
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
     </div>
   );

@@ -3,18 +3,18 @@
 import { useAfyaStore } from "@/store/useAfyaStore";
 import { Button } from "@/components/ui/button";
 
-export default function AuditPage() {
-  const { audits, addAudit, updateAuditStatus } = useAfyaStore();
+export default function Findings() {
+  const { findings, addFinding, updateFindingStatus } = useAfyaStore();
 
-  const handleAddAudit = () => {
+  const handleAddFinding = () => {
     const id = Math.random().toString(36).slice(2);
-    addAudit({ id, status: "Open" });
+    addFinding({ id, status: "Open" });
   };
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-semibold mb-4">Audits</h1>
-      <Button onClick={handleAddAudit}>Add Audit</Button>
+      <h1 className="text-xl font-semibold mb-4">Audit Findings</h1>
+      <Button onClick={handleAddFinding}>Add Finding</Button>
       <table className="w-full mt-4 border-collapse">
         <thead>
           <tr className="bg-gray-100 text-left">
@@ -24,14 +24,14 @@ export default function AuditPage() {
           </tr>
         </thead>
         <tbody>
-          {audits.map((a) => (
-            <tr key={a.id} className="border-t">
-              <td className="p-2">{a.id}</td>
-              <td className="p-2">{a.status}</td>
+          {findings.map((f) => (
+            <tr key={f.id} className="border-t">
+              <td className="p-2">{f.id}</td>
+              <td className="p-2">{f.status}</td>
               <td className="p-2">
-                {a.status === "Open" && (
-                  <Button onClick={() => updateAuditStatus(a.id, "Completed")}>
-                    Mark Completed
+                {f.status === "Open" && (
+                  <Button onClick={() => updateFindingStatus(f.id, "Closed")}>
+                    Mark Closed
                   </Button>
                 )}
               </td>
