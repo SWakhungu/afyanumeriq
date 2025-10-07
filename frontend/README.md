@@ -1,192 +1,88 @@
-🩺 AfyaNumeriq – Healthcare GRC Platform
+AfyaNumeriq – Healthcare GRC Platform- Frontend (MVP)
 
 AfyaNumeriq is a Governance, Risk, and Compliance (GRC) platform designed to support healthcare organizations in implementing and internally auditing ISO 7101:2023 – Healthcare Quality Management Systems.
 
-The platform helps hospitals and clinics manage risks, track compliance, and conduct internal audits in a structured, visual, and digital way — ensuring continual improvement and adherence to international healthcare quality standards.
-
-🚀 Current Project Status (Frontend MVP)
-
-This repository contains the frontend of the AfyaNumeriq platform, built using modern web technologies to deliver a clean, responsive, and scalable user experience.
-
-✅ Completed Features
-1. Home Dashboard
-
-Displays summary widgets for:
-
-Risk Register (open vs closed)
-
-Compliance Maturity (visual donut chart)
-
-Upcoming audits & reminders
-
-Dynamic layout powered by Recharts and Tailwind CSS
-
-2. Risk Register
-
-Full-featured risk table with the following fields:
-
-Risk ID, Description, Likelihood, Impact, Risk Score, Risk Level, Existing Controls, Treatment Actions, Owner, Status, Review Date
-
-Add and update risks dynamically
-
-Color-coded status indicators (Open, Mitigated, Closed) THIS WILL AND SHOULD CHANGE!
-
-Backend-ready for future persistence
-
-3. Compliance Tracker (ISO 7101:2023)
-
-Includes all 34 clauses and subclauses of ISO 7101:2023
-
-Clause-by-clause compliance gauging:
-
-Status options: NI, P, IP, MI, O
-
-Evidence upload field
-
-Bottom legend explains the meaning of each status (NI → O)
-
-Structured for future database linkage
-
-4. Internal Audit Module
-
-/audit → Schedule, update, and track internal audits
-
-/audit/findings → Record and follow up on audit findings
-
-Status tracking for completed and pending audits
-
-Future integration planned for CAPA (Corrective and Preventive Actions)
-
-5. Reports Dashboard
-
-Summary view for:
-
-Risk status distribution
-
-Compliance scores
-
-Audit performance overview
-
-Will pull real-time metrics once backend integration is complete
-
-6. Settings
-
-Placeholder for:
-
-User management
-
-System settings
-
-Role-based permissions (to be added later)
-
-🧠 Architecture Overview
-
-Tech Stack:
-
-Next.js 15
- (React-based full-stack framework)
-
-TypeScript
- (typed JavaScript)
-
-Tailwind CSS
- (utility-first styling)
-
-Zustand
- (state management)
-
-Recharts
- (data visualization)
-
-Folder Structure:
-
-frontend/
-├── src/
-│   ├── app/
-│   │   ├── audit/
-│   │   │   ├── findings/page.tsx
-│   │   │   └── page.tsx
-│   │   ├── compliance/page.tsx
-│   │   ├── risk/page.tsx
-│   │   ├── reports/page.tsx
-│   │   ├── settings/page.tsx
-│   │   ├── layout.tsx
-│   │   └── page.tsx
-│   ├── components/
-│   │   ├── sidebar.tsx
-│   │   └── ui/button.tsx
-│   └── store/useAfyaStore.ts
-
-🔄 Integration Plan (Frontend ⇄ Backend)
-
-The backend will be implemented using Django REST Framework (DRF).
-
-Expected API endpoints:
-
-Feature	Endpoint	Methods
-Risk Register	/api/risks/	GET, POST, PUT, DELETE
-Compliance Tracker	/api/compliance/	GET, POST, PUT
-Internal Audits	/api/audits/	GET, POST, PUT
-Audit Findings	/api/findings/	GET, POST, PUT
-
-Frontend Integration Steps (once backend is ready):
-
-Add .env.local file:
-
-NEXT_PUBLIC_API_URL=http://localhost:8000/api
-
-
-Replace the seeded data in useAfyaStore.ts with live data fetched from the API:
-
-useEffect(() => {
-  fetch(`${process.env.NEXT_PUBLIC_API_URL}/risks/`)
-    .then(res => res.json())
-    .then(data => set({ risks: data }));
-}, []);
-
-
-Apply similar logic for compliance, audits, and findings.
-
-🧩 State Management Overview
-
-The Zustand store (src/store/useAfyaStore.ts) maintains the following global state:
-
-{
-  risks: [],
-  audits: [],
-  findings: [],
-  complianceRecords: [],
-  addRisk(), updateRiskStatus(),
-  addAudit(), updateAuditStatus(),
-  addFinding(), updateFindingStatus(),
-  addCompliance(), updateComplianceStatus()
-}
-
-
-It acts as the single source of truth for all pages.
-Once the backend is connected, this store will hydrate its state from the REST API.
-
-🧭 Next Steps (for Fehn)
-
-Set up Django REST Framework with models corresponding to:
-
-Risk
-
-Compliance (ISO 7101 clauses)
-
-Audit
-
-AuditFinding
-
-Create serializers and CRUD API endpoints for each.
-
-Enable CORS for Next.js frontend (via django-cors-headers).
-
-Test data exchange using fetch requests or Postman.
-
-Provide endpoint URLs to integrate into the Zustand store.
-
-🧾 Contributors
+The platform helps healthcare organizations of whatever size and maturity level manage risks, track compliance, and conduct internal audits in a structured, visual, and digital way — ensuring continual improvement and adherence to international healthcare quality standards.The platform aims to provide real-time visibility into quality, compliance, and risk metrics for healthcare organizations.
+
+FEATURES
+Interactive Dashboard: Displays compliance score, total risks, audits, and reminders.
+
+Modular Pages: Dedicated sections for Risk, Compliance, Audit, Reports, and Settings.
+
+Dynamic Sidebar Navigation: Clean teal-themed sidebar with active link highlighting and hover effects.
+
+Notifications System: Bell icon in the header for alerts.
+
+Responsive Design: Works seamlessly across devices.
+
+State Management: Powered by Zustand (useAfyaStore.ts).
+
+Clean UI Components: Reusable Button and Card components with consistent styling (not for all the buttons thought at the time of writing this document-October 7th, 2025).
+
+TECH STACK
+Next.js 15 (Turbopack)
+React 19
+TypeScript 5
+Tailwind CSS 3
+Zustand 5
+Lucide React Icons
+
+Project Structure
+src/
+├── app/
+│ ├── audit/
+│ ├── compliance/
+│ ├── risk/
+│ ├── reports/
+│ ├── settings/
+│ ├── globals.css
+│ ├── layout.tsx
+│ └── page.tsx
+├── components/
+│ ├── Notifications.tsx
+│ ├── sidebar.tsx
+│ ├── Topbar.tsx
+│ └── ui/
+│ ├── button.tsx
+│ └── card.tsx
+├── lib/
+│ └── utils.ts
+└── store/
+└── useAfyaStore.ts
+
+UI GUIDELINES
+Primary Color: Teal (#0d9488)
+Accent Color: Deep Teal (#115e59)
+Font: Inter
+Buttons: Consistent teal theme with hover and focus states (NOT ALL of them as at 07/10/2025).
+Cards: Light background, rounded corners, subtle shadows.
+Layout: Sidebar on left, dashboard content on right.
+
+Setup and Run
+
+# Install dependencies
+
+npm install
+
+# Run development server
+
+npm run dev
+Then open http://localhost:3000
+
+BACKEND CONNECTION
+
+1. Update your .env.local with the backend API base URL:
+   NEXT_PUBLIC_API_URL=http://localhost:8000/api
+   2.Use Axios or Fetch to connect endpoints (e.g., risk, compliance).
+2. Ensure backend is running before fetching live data.
+
+NEXT STEPS
+Integrate backend API endpoints.
+Add role-based access control.
+Implement real-time data refresh via WebSockets.
+Enhance charts with dynamic data.
+
+Contributors
 
 Frontend Development: Steve Wakhungu
 
@@ -194,7 +90,7 @@ Backend Development: Fehn Nyabuto
 
 Design & Architecture: Joint collaboration under Nzasi Ventures Limited
 
-📜 License
+License
 
-© 2025 AfyaNumeriq LLC. All rights reserved.
+© 2025 AfyaNumeriq. All rights reserved.
 Unauthorized reproduction or distribution of this software or its code is prohibited.

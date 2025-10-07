@@ -1,11 +1,6 @@
 import "./globals.css";
-import type { Metadata } from "next";
-import { Sidebar } from "@/components/sidebar";
-
-export const metadata: Metadata = {
-  title: "AfyaNumeriq",
-  description: "Healthcare GRC Platform",
-};
+import Sidebar from "@/components/sidebar";
+import { Bell } from "lucide-react";
 
 export default function RootLayout({
   children,
@@ -15,21 +10,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="flex min-h-screen bg-gray-50">
-        {/* Sidebar on the left */}
         <Sidebar />
-
-        {/* Main content area */}
-        <div className="flex-1 flex flex-col">
-          {/* Topbar placeholder */}
-          <header className="h-14 bg-white border-b px-6 flex items-center justify-between">
-            <div className="text-sm text-gray-600">AfyaNumeriq Dashboard</div>
-            <div className="flex items-center gap-4">
-              <button className="text-sm text-gray-500">Notifications</button>
-              <div className="w-8 h-8 bg-gray-200 rounded-full" />
-            </div>
-          </header>
-
-          {/* Page content */}
+        <div className="flex-1 flex flex-col relative">
+          {/* Bell notification at top right */}
+          <div className="absolute top-6 right-8 z-10">
+            <button
+              className="p-2 rounded-full bg-white shadow hover:bg-gray-100 transition"
+              title="Notifications"
+            >
+              <Bell className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
           <main className="p-6">{children}</main>
         </div>
       </body>

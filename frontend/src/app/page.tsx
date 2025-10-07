@@ -1,206 +1,90 @@
 "use client";
 
-import Link from "next/link";
 import { useAfyaStore } from "@/store/useAfyaStore";
-import { Card, CardContent } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
+import "react-circular-progressbar/dist/styles.css";
 
 export default function Home() {
-  const { risks, audits, complianceRecords } = useAfyaStore();
+  const { risks, compliance, audits, reminders } = useAfyaStore();
 
-  // --- Metrics ---
-  const totalRisks = risks.length;
-  const openRisks = risks.filter((r) => r.status !== "Closed").length;
-
-  const totalAudits = audits.length;
-  const completedAudits = audits.filter((a) => a.status === "Completed").length;
-
-  const scoreMap: Record<string, number> = {
-    NI: 0,
-    P: 25,
-    IP: 50,
-    MI: 75,
-    O: 100,
-  };
-  const complianceScores = complianceRecords.map(
-    (c) => scoreMap[c.status] || 0
-  );
-  const averageCompliance =
-    complianceScores.length > 0
-      ? (
-          complianceScores.reduce((a, b) => a + b, 0) / complianceScores.length
-        ).toFixed(1)
+  // Handle undefined state safely
+  const totalClauses = compliance?.length || 0;
+  const implementedClauses =
+    compliance?.filter((c) => c.status === "O" || c.status === "MI").length ||
+    0;
+  const compliancePercent =
+    totalClauses > 0
+      ? Math.round((implementedClauses / totalClauses) * 100)
       : 0;
 
-  const COLORS = ["#14b8a6", "#e5e7eb"];
-  const donutData = (val: number) => [
-    { name: "Done", value: val },
-    { name: "Remaining", value: 100 - val },
-  ];
-
   return (
-    <div className="p-6 space-y-8">
-      <h1 className="text-3xl font-bold text-teal-700">
-        Welcome to AfyaNumeriq Dashboard
-      </h1>
-      <p className="text-gray-600">
-        Overview of key Healthcare Quality Management metrics.
-      </p>
+    <div className="p-8 bg-gradient-to-br from-gray-50 to-white min-h-screen">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-800">
+          Welcome to AfyaNumeriq Dashboard
+        </h1>
+        <p className="text-gray-500 mt-2">
+          Overview of key Healthcare Quality Management System metrics.
+        </p>
+      </div>
 
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Risk Register */}
-        <Link href="/risk">
-          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">
-                Risk Register
-              </h2>
-              <div className="w-28 h-28 mx-auto">
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie
-                      data={donutData(
-                        totalRisks > 0
-                          ? ((openRisks / totalRisks) * 100).toFixed(1)
-                          : 0
-                      )}
-                      innerRadius={40}
-                      outerRadius={55}
-                      dataKey="value"
-                      paddingAngle={3}
-                    >
-                      {donutData(
-                        totalRisks > 0
-                          ? ((openRisks / totalRisks) * 100).toFixed(1)
-                          : 0
-                      ).map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-gray-500 text-sm mt-2">
-                {openRisks} Open / {totalRisks} Total
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        <div className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            Total Risks
+          </h3>
+          <p className="text-4xl font-bold text-teal-600">{risks.length}</p>
+        </div>
 
-        {/* Compliance */}
-        <Link href="/compliance">
-          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">
-                Compliance Status
-              </h2>
-              <div className="w-28 h-28 mx-auto">
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie
-                      data={donutData(Number(averageCompliance))}
-                      innerRadius={40}
-                      outerRadius={55}
-                      dataKey="value"
-                      paddingAngle={3}
-                    >
-                      {donutData(Number(averageCompliance)).map(
-                        (entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={COLORS[index % COLORS.length]}
-                          />
-                        )
-                      )}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-gray-500 text-sm mt-2">
-                {averageCompliance}% average
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        <div className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            Compliance %
+          </h3>
+          <p className="text-4xl font-bold text-teal-600">
+            {compliancePercent}%
+          </p>
+        </div>
 
-        {/* Audits */}
-        <Link href="/audit">
-          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">
-                Audits
-              </h2>
-              <div className="w-28 h-28 mx-auto">
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie
-                      data={donutData(
-                        totalAudits > 0
-                          ? ((completedAudits / totalAudits) * 100).toFixed(1)
-                          : 0
-                      )}
-                      innerRadius={40}
-                      outerRadius={55}
-                      dataKey="value"
-                      paddingAngle={3}
-                    >
-                      {donutData(
-                        totalAudits > 0
-                          ? ((completedAudits / totalAudits) * 100).toFixed(1)
-                          : 0
-                      ).map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-gray-500 text-sm mt-2">
-                {completedAudits} Completed / {totalAudits} Total
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        <div className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">Audits</h3>
+          <p className="text-4xl font-bold text-teal-600">{audits.length}</p>
+        </div>
 
-        {/* Reports */}
-        <Link href="/reports">
-          <Card className="hover:shadow-lg transition border-teal-100 cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">
-                Reports
-              </h2>
-              <div className="w-28 h-28 mx-auto">
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie
-                      data={donutData(100)} // Always complete (Reports are summaries)
-                      innerRadius={40}
-                      outerRadius={55}
-                      dataKey="value"
-                      paddingAngle={3}
-                    >
-                      {donutData(100).map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="text-gray-500 text-sm mt-2">
-                View generated summaries
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
+        <div className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition-shadow border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            Reminders
+          </h3>
+          <p className="text-4xl font-bold text-teal-600">
+            {reminders?.length || 0}
+          </p>
+        </div>
+      </div>
+
+      {/* Compliance Score - Circular Progress Bar */}
+      <div className="mt-10 bg-white p-6 rounded-2xl shadow-md border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-700 mb-4">
+          Compliance Score
+        </h3>
+        <div className="flex justify-center">
+          <div className="w-32 h-32">
+            <CircularProgressbar
+              value={compliancePercent}
+              text={`${compliancePercent}%`}
+              styles={buildStyles({
+                pathColor: "#14b8a6",
+                textColor: "#0f766e",
+                trailColor: "#e5e7eb",
+              })}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Optional — you can later add charts here */}
+      <div className="mt-10 text-gray-500 text-sm italic">
+        Live data powered by AfyaNumeriq Compliance & Risk Modules
       </div>
     </div>
   );
