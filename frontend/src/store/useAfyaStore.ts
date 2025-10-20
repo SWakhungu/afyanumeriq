@@ -1,5 +1,8 @@
 import { create } from "zustand";
 
+//
+// 🧩 Type Definitions
+//
 type Risk = {
   id: number;
   description: string;
@@ -49,10 +52,15 @@ interface AfyaStore {
   addCompliance: (record: ComplianceItem) => void;
   addFinding: (finding: Finding) => void;
   updateRiskStatus: (id: number, status: string) => void;
+  updateComplianceStatus: (id: number, status: string) => void;
+  updateAuditStatus: (id: number, status: string) => void;
 }
 
+//
+// 🏥 Zustand Store Definition
+//
 export const useAfyaStore = create<AfyaStore>((set) => ({
-  // Sample initial data
+  // --- Initial Data ---
   risks: [
     {
       id: 1,
@@ -68,6 +76,7 @@ export const useAfyaStore = create<AfyaStore>((set) => ({
       reviewDate: "2025-11-15",
     },
   ],
+
   audits: [
     {
       id: 1,
@@ -75,7 +84,14 @@ export const useAfyaStore = create<AfyaStore>((set) => ({
       date: "2025-11-01",
       status: "Scheduled",
     },
+    {
+      id: 2,
+      name: "Patient Safety Review",
+      date: "2025-12-05",
+      status: "Planned",
+    },
   ],
+
   complianceRecords: [
     {
       id: 1,
@@ -84,19 +100,28 @@ export const useAfyaStore = create<AfyaStore>((set) => ({
       status: "IP",
       evidence: "",
     },
+    {
+      id: 2,
+      clause: "5.1",
+      description: "Ensuring the HQMS supports continual improvement.",
+      status: "MI",
+      evidence: "",
+    },
   ],
+
   findings: [
     {
       id: 1,
       auditId: 1,
       description: "Untrained staff handling medical devices.",
       severity: "Major",
-      correctiveAction: "Schedule refresher training",
+      correctiveAction: "Schedule device handling refresher course",
       dueDate: "2025-10-20",
       status: "Open",
     },
   ],
-  // Actions
+
+  // --- Setter Functions ---
   addRisk: (risk) => set((state) => ({ risks: [...state.risks, risk] })),
   addAudit: (audit) => set((state) => ({ audits: [...state.audits, audit] })),
   addCompliance: (record) =>
@@ -105,8 +130,21 @@ export const useAfyaStore = create<AfyaStore>((set) => ({
     })),
   addFinding: (finding) =>
     set((state) => ({ findings: [...state.findings, finding] })),
+
   updateRiskStatus: (id, status) =>
     set((state) => ({
       risks: state.risks.map((r) => (r.id === id ? { ...r, status } : r)),
+    })),
+
+  updateComplianceStatus: (id, status) =>
+    set((state) => ({
+      complianceRecords: state.complianceRecords.map((r) =>
+        r.id === id ? { ...r, status } : r
+      ),
+    })),
+
+  updateAuditStatus: (id, status) =>
+    set((state) => ({
+      audits: state.audits.map((a) => (a.id === id ? { ...a, status } : a)),
     })),
 }));
