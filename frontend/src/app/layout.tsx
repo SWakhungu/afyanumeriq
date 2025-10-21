@@ -4,6 +4,8 @@ import "./globals.css";
 import Sidebar from "@/components/sidebar";
 import { Bell, User } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import Favicon from "/AfyaNumeriq Favicon.png";
+
 
 export default function RootLayout({
   children,
