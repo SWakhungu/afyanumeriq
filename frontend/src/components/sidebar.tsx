@@ -33,10 +33,11 @@ const Sidebar = () => {
       >
         <div className="flex items-center justify-center w-full">
           <Image
-            src="/AfyaNumeriq logo.png"
+            src="/AfyaNumeriq LOGO.png" // ✅ Updated logo file (official one in /public)
             alt="AfyaNumeriq Logo"
             width={collapsed ? 40 : 120}
             height={collapsed ? 40 : 120}
+            priority
             className={`transition-all duration-300 ${
               collapsed ? "mx-auto" : "mx-0"
             }`}
