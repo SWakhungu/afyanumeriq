@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { apiFetch } from "@/lib/api";
 
 //
 // 🧩 Type Definitions
@@ -54,6 +55,13 @@ interface AfyaStore {
   updateRiskStatus: (id: number, status: string) => void;
   updateComplianceStatus: (id: number, status: string) => void;
   updateAuditStatus: (id: number, status: string) => void;
+
+  // --- Async Fetch Methods (Backend Integration) ---
+  fetchRisks: () => Promise<void>;
+  fetchAudits: () => Promise<void>;
+  fetchCompliance: () => Promise<void>;
+  fetchFindings: () => Promise<void>;
+  fetchTasks: () => Promise<void>;
 }
 
 //
@@ -147,4 +155,26 @@ export const useAfyaStore = create<AfyaStore>((set) => ({
     set((state) => ({
       audits: state.audits.map((a) => (a.id === id ? { ...a, status } : a)),
     })),
+
+  // --- Async Fetch Methods (Backend Integration) ---
+  fetchRisks: async () => {
+    const data = await apiFetch("/api/risks/");
+    set({ risks: data });
+  },
+  fetchAudits: async () => {
+    const data = await apiFetch("/api/audits/");
+    set({ audits: data });
+  },
+  fetchCompliance: async () => {
+    const data = await apiFetch("/api/compliance/");
+    set({ complianceRecords: data });
+  },
+  fetchFindings: async () => {
+    const data = await apiFetch("/api/findings/");
+    set({ findings: data });
+  },
+  fetchTasks: async () => {
+    const data = await apiFetch("/api/tasks/");
+    set({ tasks: data });
+  },
 }));
