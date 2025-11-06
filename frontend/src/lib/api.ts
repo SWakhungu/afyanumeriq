@@ -1,18 +1,41 @@
-export async function apiFetch(path: string, opts: RequestInit = {}) {
-  const base = process.env.NEXT_PUBLIC_API_URL || '';
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+// src/lib/api.ts
 
-  const headers = new Headers(opts.headers || {});
-  headers.set('Content-Type', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+console.log("🔎 API_BASE =", API_BASE);
 
-  const response = await fetch(base + path, { ...opts, headers });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `API error ${response.status}: ${errorText || response.statusText}`
-    );
+
+export async function apiFetch(url: string, options: any = {}) {
+  const res = await fetch(`${API_BASE}${url}`, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    ...options,
+  });
+
+  if (!res.ok) {
+    throw new Error(await res.text());
   }
-  return response.json();
+
+  return res.json();
 }
+
+/**
+ * Upload helper for evidence / file uploads
+ * Accepts FormData (so DO NOT set content-type header manually)
+ */
+export async function apiUpload(url: string, formData: FormData) {
+  const res = await fetch(`${API_BASE}${url}`, {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+
+  return res.json();
+}
+
+export const apiBase = API_BASE;    
