@@ -70,7 +70,7 @@ const Sidebar = () => {
         <SidebarLink
           href="/"
           icon={<Home size={18} />}
-          label="Dashboard"
+          label="Home"
           collapsed={collapsed}
           active={pathname === "/"}
         />
