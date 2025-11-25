@@ -53,6 +53,11 @@ export default function ReportsPage() {
           >
             Download Risk Register CSV
           </Button>
+          <Button
+            onClick={() => handleDownload("/reports/audits.csv", "audits.csv")}
+          >
+            Download Audits CSV
+          </Button>
         </div>
       </Card>
     </div>

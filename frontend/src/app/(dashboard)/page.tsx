@@ -31,18 +31,16 @@ export default function DashboardPage() {
 
   const score = stats.compliance_score ?? 0;
 
-  // donut geometry
   const radius = 50;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
 
-  // ✅ revised scoring colors (0–100 backend value)
   const getColor = (value: number) => {
-    if (value >= 75) return "#15803d"; // dark green
-    if (value >= 50) return "#4ade80"; // light green
-    if (value >= 25) return "#eab308"; // yellow
-    if (value > 0) return "#f97316"; // orange
-    return "#dc2626"; // red (0%)
+    if (value >= 75) return "#15803d";
+    if (value >= 50) return "#4ade80";
+    if (value >= 25) return "#eab308";
+    if (value > 0) return "#f97316";
+    return "#dc2626";
   };
 
   return (
@@ -78,7 +76,6 @@ export default function DashboardPage() {
       <div className="flex justify-center pt-4">
         <Card className="w-64 h-64 flex items-center justify-center relative">
           <svg width="180" height="180" viewBox="0 0 120 120">
-            {/* background circle */}
             <circle
               cx="60"
               cy="60"
@@ -88,7 +85,6 @@ export default function DashboardPage() {
               fill="none"
             />
 
-            {/* animated progress circle */}
             <circle
               cx="60"
               cy="60"
@@ -112,6 +108,7 @@ export default function DashboardPage() {
           </div>
         </Card>
       </div>
+
       <div className="mt-10 text-gray-500 text-sm italic">
         Live data powered by AfyaNumeriq Compliance & Risk Modules
       </div>

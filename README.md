@@ -1,177 +1,153 @@
-# AfyaNumeriq Platform– Developer Guide
+# AfyaNumeriq– Developer Guide
 
-This document is for engineers contributing to the AfyaNumeriq platform.
+Last updated: Nov 2025
 
-For product overview, see the main `README.md`.  
-This guide explains **how the codebase is structured, how to run it locally, and how to extend it safely.**
+This guide provides a quick technical overview for developers working on the AfyaNumeriq platform (Next.js 15 + Django REST + PostgreSQL).
+It focuses on how to run the system, where things live, and how to work safely.
 
----
-
-## 🏗️ Architecture Overview
-
-monorepo/
+Project Structure (Monorepo)
+afyanumeriq/
+├── backend/ # Django API
+│ ├── api/ # Models, views, serializers, auth, notifications
+│ ├── config/ # Django settings + URLs
+│ ├── evidence/ # Uploaded evidence files
+│ ├── manage.py
+│ └── requirements.txt
 │
-├── backend/ Django REST API (DB, models, business logic)
-├── frontend/ Next.js 15 App Router PWA (UI + API client)
-└── api/ ISO seeding management script (temporary folder)
+├── frontend/ # Next.js 15 App Router frontend
+│ ├── src/
+│ ├── public/
+│ └── package.json
+│
+└── README.md
+All custom Django management commands (seeders, role creators, etc.) live under:
+backend/api/management/commands/
 
-Frontend communicates with backend via fetch wrapper in  
-`/frontend/src/lib/api.ts`.
-
----
-
-## ⚙️ Local Setup
-
-### 1️⃣ Backend (Django)
-
+Running the Platform (Local)
+Backend — Django API
 cd backend
-python3 -m venv venv
-source venv/bin/activate
+source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
 
-Backend will run on:http://127.0.0.1:8000
+Runs at:
+http://127.0.0.1:8000
 
-#### Seed ISO 7101 clauses: python manage.py shell < seed.py
-
-Or later (JSON version): python manage.py loaddata iso7101.json
-
-Uploads are stored in `/backend/evidence/`.
-
----
-
-### 2️⃣ Frontend (Next.js 15)
-
+Frontend — Next.js
 cd frontend
 npm install
 npm run dev
 
-Frontend runs on:http://localhost:3000
+Runs at:
+http://127.0.0.1:3000
 
----
+Authentication (MVP Status)
 
-## 🔧 Environment Variables
+Auth uses JWT access tokens (in memory) + refresh token stored in HttpOnly cookie.
 
-### Backend (`backend/config/settings.py`)
+Login endpoint:
+POST /api/auth/login/
+Refresh endpoint:
+POST /api/auth/refresh/
+Profile endpoint:
+GET /api/auth/me/
+Frontend keeps auth state in:
+src/store/authStore.ts
+Logout clears local state + cookie.
 
-| Key             | Default             | Notes               |
-| --------------- | ------------------- | ------------------- |
-| `DEBUG`         | True                | Set False in prod   |
-| `ALLOWED_HOSTS` | `*`                 | Update for live     |
-| `MEDIA_ROOT`    | `backend/evidence/` | Storage for uploads |
-| `MEDIA_URL`     | `/media/`           | Served by Django    |
+Seeding Critical Data
+ISO 7101 Clauses (34 in number; core to the system)
+python manage.py seed_iso7101
+Located at:
+backend/api/management/commands/seed_iso7101.py
 
-Planned (post-MVP):
+Other seeders available:
+create_roles.py
+create_user_profiles.py
+seed_clauses.py
+fix_short_descriptions.py
 
-| Key             | Purpose                |
-| --------------- | ---------------------- |
-| `JWT_SECRET`    | Signing tokens         |
-| `S3_BUCKET_URL` | Cloud evidence storage |
+Fake Demo Data (Important)
+The platform currently loads demo data:
 
----
+Fake notifications
 
-### Frontend (`frontend/.env.local`)
+Example organizations
 
-| Key                   | Default                     |
-| --------------------- | --------------------------- |
-| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000/api` |
+Example risks, audits, and compliance clauses
 
-Planned:
+Example users (via seeders)
 
-| Key                       | Purpose      |
-| ------------------------- | ------------ |
-| `NEXT_PUBLIC_JWT_ENABLED` | Toggles auth |
-| `NEXT_PUBLIC_APP_NAME`    | Branding     |
+Before Production Release:
 
----
+You must:
 
-## 📂 Folder Breakdown
+Drop or sanitize fake records.
 
-### Backend
+Rerun only the ISO 7101 seed command.
 
-backend/
-├── api/ # All business logic (models, serializers, views, urls)
-│ ├── models.py # Risk, Compliance, Audit, Findings
-│ ├── views.py # CRUD + upload handlers
-│ ├── serializers.py
-│ └── reports.py # CSV / PDF generators (partial)
-├── config/ # Django project settings
-├── evidence/ # Uploaded proof files
-└── seed.py # ISO 7101 DB seeder
+Create a real admin user manually.
 
-### Frontend
+Upload no dummy evidence files.
 
-frontend/src/
-├── app/ # Next.js routes (Audit, Risk, Compliance, etc.)
-├── components/ # Shared UI components
-├── lib/ # API fetch wrapper + utilities
-├── store/ # Zustand global state
-└── styles/ # Tailwind + globals
+A cleanup script can be added later if needed.
 
----
+Environment Variables
+Backend (backend/config/settings.py)
+Backend (backend/config/settings.py)
 
-## 🔌 API Reference (MVP)
+Frontend (frontend/.env.local)
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api
 
-| Endpoint                         | Method         | Purpose          |
-| -------------------------------- | -------------- | ---------------- |
-| `/api/compliance/`               | GET            | All ISO clauses  |
-| `/api/compliance/{id}/evidence/` | POST           | Upload file      |
-| `/api/risks/`                    | GET/POST/PATCH | Risk register    |
-| `/api/audits/`                   | GET/POST       | Audit schedule   |
-| `/api/findings/{id}/`            | PATCH          | Mark Open/Closed |
+Key API Endpoints (Quick View)
+/api/auth/login/ POST
+/api/auth/logout/ POST
+/api/auth/me/ GET
+/api/auth/change-password/ POST
 
-Full OpenAPI spec will be auto-generated post-auth refactor.
+/api/compliance/ GET
+/api/compliance/<id>/evidence/ POST
 
----
+/api/notifications/ GET
+/api/notifications/mark-read/ POST
 
-## 🔥 Contributing Rules
+/api/audits/ GET, POST
+/api/findings/<id>/ PATCH
 
-✅ All work in feature branches:  
-git checkout -b feat/<feature-name>
+Git Workflow
+Branches:
+main # stable releases only
+develop # integration branch
+feat/... # feature branches
+Workflow:
+git checkout develop
+git checkout -b feat/some-feature
 
-✅ Merge into `develop` via PR  
-✅ `main` only receives tagged, stable versions (`v0.9-mvp`, etc.)
+# build feature
 
-❌ Never commit directly to `main`  
-❌ No large UI refactors without issue ticket  
-❌ No breaking DB changes without migration + note
+git push origin feat/some-feature
 
----
+# open PR → develop
 
-## 🛠️ Tests (Post-MVP)
+Never merge directly to main.
 
-Backend: pytest
+Deployment Notes (Post-MVP)
+Before production:
 
-Frontend: npm run test
+Set DEBUG=False.
 
-Coverage enforcement will be added once auth + RBAC are implemented.
+Move evidence storage to S3 or equivalent.
 
----
+Use Postgres on managed service.
 
-## 🧱 Future Enhancements (Developer View)
+Add HTTPS so refresh cookies can use Secure.
 
-| Todo             | Where                  |
-| ---------------- | ---------------------- |
-| JWT Auth         | Backend + frontend     |
-| RBAC             | New user + role models |
-| S3 storage       | Replace local media    |
-| Multi-tenant DB  | Settings module        |
-| PDF reports      | `/reports` backend     |
-| Queue async jobs | Celery + Redis         |
+Replace dev seed data with real content.
 
----
+Add production WSGI (gunicorn) + reverse proxy (NGINX/Caddy).
 
-## 📌 Notes for Onboarding Devs
-
-- This is an MVP, not final architecture
-- No authentication yet → wide-open API
-- SQLite used to simplify demo
-- Codebase is intentionally readable > optimized
-
----
-
-## 🧑‍💻 Maintainer
+Maintainer
 
 Steve Wakhungu  
 Nzasi Ventures Ltd.

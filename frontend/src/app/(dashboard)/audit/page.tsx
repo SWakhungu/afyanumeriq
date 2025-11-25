@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,20 +39,20 @@ export default function AuditPage() {
   const [audits, setAudits] = useState<Audit[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState<"All" | "Scheduled" | "Completed">(
-    "All"
-  );
+  const [statusFilter, setStatusFilter] = useState<
+    "All" | "Scheduled" | "Completed"
+  >("All");
   const [findingsFilter, setFindingsFilter] = useState<
     "All audits" | "With open findings" | "No open findings"
   >("All audits");
 
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [openModal, setOpenModal] = useState(false);
 
   const { show } = useToast();
 
   const findingsFilterDisabled = statusFilter !== "Completed";
-  const hasOpenFindings = (a: Audit) => a.findings?.some((f) => f.status === "Open");
+  const hasOpenFindings = (a: Audit) =>
+    a.findings?.some((f) => f.status === "Open");
 
   const fetchAudits = async () => {
     setLoading(true);
@@ -59,12 +60,16 @@ export default function AuditPage() {
       const data = (await apiFetch("/audits/")) as Audit[];
       let list = data ?? [];
 
-      if (statusFilter === "Scheduled") list = list.filter((a) => a.status === "Scheduled");
-      if (statusFilter === "Completed") list = list.filter((a) => a.status === "Completed");
+      if (statusFilter === "Scheduled")
+        list = list.filter((a) => a.status === "Scheduled");
+      if (statusFilter === "Completed")
+        list = list.filter((a) => a.status === "Completed");
 
       if (statusFilter === "Completed") {
-        if (findingsFilter === "With open findings") list = list.filter(hasOpenFindings);
-        if (findingsFilter === "No open findings") list = list.filter((a) => !hasOpenFindings(a));
+        if (findingsFilter === "With open findings")
+          list = list.filter(hasOpenFindings);
+        if (findingsFilter === "No open findings")
+          list = list.filter((a) => !hasOpenFindings(a));
       }
 
       setAudits(list);
@@ -85,25 +90,6 @@ export default function AuditPage() {
       setFindingsFilter("All audits");
     }
   }, [findingsFilterDisabled, findingsFilter]);
-
-  const toggleExpanded = (id: number) =>
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  const handleFindingStatus = async (findingId: number, newStatus: "Open" | "Closed") => {
-    try {
-      await apiFetch(`/findings/${findingId}/`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: newStatus }),
-      });
-      show(
-        newStatus === "Closed" ? "Finding marked Closed" : "Finding reopened",
-        "success"
-      );
-      fetchAudits();
-    } catch {
-      show("Could not update finding", "error");
-    }
-  };
 
   return (
     <div className="p-6">
@@ -168,12 +154,11 @@ export default function AuditPage() {
 
                 <div className="flex items-center gap-2">
                   <Badge variant={STATUS_BADGE(a.status)}>{a.status}</Badge>
-                  <button
-                    className="border rounded px-3 py-1 text-sm hover:bg-gray-50"
-                    onClick={() => toggleExpanded(a.id)}
-                  >
-                    {expanded[a.id] ? "Hide Findings" : "View Findings"}
-                  </button>
+                  <Link href={`/audit/findings?audit_id=${a.id}`}>
+                    <button className="border rounded px-3 py-1 text-sm hover:bg-gray-50">
+                      View Findings
+                    </button>
+                  </Link>
                 </div>
               </div>
 
@@ -194,58 +179,6 @@ export default function AuditPage() {
                     <p>
                       <span className="font-semibold">Objective:</span>{" "}
                       {a.objective}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {expanded[a.id] && (
-                <div className="mt-4 space-y-3">
-                  {a.findings?.length ? (
-                    a.findings.map((f) => (
-                      <div
-                        key={f.id}
-                        className="border rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between"
-                      >
-                        <div className="mr-4">
-                          <div className="font-semibold">{f.finding_id}</div>
-                          <p className="text-sm text-gray-700">{f.description}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Severity: {f.severity} | Target:{" "}
-                            {new Date(f.target_date).toLocaleDateString()}
-                          </p>
-                          {f.corrective_action && (
-                            <p className="text-xs italic text-gray-500">
-                              Action: {f.corrective_action}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-2 md:mt-0">
-                          <Badge variant={f.status === "Closed" ? "success" : "warning"}>
-                            {f.status}
-                          </Badge>
-                          {f.status === "Open" ? (
-                            <button
-                              className="border rounded px-3 py-1 text-sm hover:bg-gray-50"
-                              onClick={() => handleFindingStatus(f.id, "Closed")}
-                            >
-                              Mark Closed
-                            </button>
-                          ) : (
-                            <button
-                              className="border rounded px-3 py-1 text-sm hover:bg-gray-50"
-                              onClick={() => handleFindingStatus(f.id, "Open")}
-                            >
-                              Reopen
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-500 italic">
-                      No findings recorded for this audit.
                     </p>
                   )}
                 </div>
