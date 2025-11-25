@@ -6,6 +6,7 @@ from django.http import HttpResponse, FileResponse
 from django.utils.timezone import now
 
 from .models import ComplianceClause, Risk
+from .models import Audit, Finding
 
 
 # ---------- Helpers ----------
@@ -105,6 +106,43 @@ def risks_csv(request):
                 "Yes" if r.archived else "No",
             ]
         )
+    return response
+
+
+# ---------- CSV: Audits ----------
+def audits_csv(request):
+    filename = f"audits_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "Audit ID",
+        "Audit Name",
+        "Date",
+        "Status",
+        "Lead Auditor",
+        "Participants",
+        "# Findings",
+        "# Open Findings",
+    ])
+
+    for a in Audit.objects.all().order_by("date"):
+        findings_qs = Finding.objects.filter(audit=a)
+        total_findings = findings_qs.count()
+        open_findings = findings_qs.filter(status="Open").count()
+
+        writer.writerow([
+            a.audit_id,
+            (a.audit_name or "").replace("\n", " ").strip(),
+            a.date.strftime("%Y-%m-%d") if a.date else "",
+            a.status,
+            a.lead_auditor or "",
+            a.participants or "",
+            total_findings,
+            open_findings,
+        ])
+
     return response
 
 

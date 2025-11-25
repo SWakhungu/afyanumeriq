@@ -1,96 +1,120 @@
+// src/components/Notifications.tsx
 "use client";
 
-import { useState } from "react";
-import { Bell } from "lucide-react";
-import { useAfyaStore } from "@/store/useAfyaStore";
+import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
-export default function Notifications() {
-  const [open, setOpen] = useState(false);
-  const risks = useAfyaStore((s) => s.risks ?? []);
-  const compliance = useAfyaStore((s) => s.complianceRecords ?? []);
-  const audits = useAfyaStore((s) => s.audits ?? []);
+type NotificationItem = {
+  id: number;
+  type: string;
+  severity: string;
+  message: string;
+  link?: string;
+};
 
-  const notifications: { id: number; message: string; type: string }[] = [];
-  let id = 1;
+export default function NotificationsDropdown({
+  onClose,
+}: {
+  onClose?: () => void;
+}) {
+  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
 
-  // Risk Alerts
-  risks.forEach((r) => {
-    if (r.status === "Open") {
-      notifications.push({
-        id: id++,
-        message: `Risk "${r.description}" remains open.`,
-        type: "alert",
-      });
+  // fetch notifications once when component mounts
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await apiFetch("/notifications/");
+        // backend historically returned either array or {notifications: [...]}
+        const arr = Array.isArray(data) ? data : data.notifications || [];
+        if (mounted) setItems(arr);
+        console.log("🔔 Notifications API response:", arr.length, "items");
+      } catch (err) {
+        console.error("Failed to load notifications:", err);
+        if (mounted) setItems([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // close on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        onClose?.();
+      }
     }
-  });
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
 
-  // Pending Compliance
-  compliance.forEach((c) => {
-    if (["NI", "P", "IP"].includes(c.status)) {
-      notifications.push({
-        id: id++,
-        message: `Clause ${c.id} (${c.status}) requires attention.`,
-        type: "info",
-      });
+  const handleClickNotification = async (n: NotificationItem) => {
+    // optimistic UX: remove item locally (mark as read locally)
+    setItems((prev) => prev.filter((i) => i.id !== n.id));
+
+    // best effort: call backend mark-read endpoint if exists (swallow errors)
+    try {
+      // this endpoint may not exist on backend; if it does, it will mark read.
+      await apiFetch(`/notifications/${n.id}/mark-read/`, { method: "POST" }).catch(
+        () => {}
+      );
+    } catch {}
+
+    // navigate
+    const link = n.link || "";
+    const route = link.startsWith("/") ? link : `/${link}`; // safe default
+    try {
+      router.push(route);
+    } catch (err) {
+      console.warn("Failed to navigate to notification link:", route, err);
+    } finally {
+      onClose?.();
     }
-  });
+  };
 
-  // Upcoming Audits
-  audits.forEach((a) => {
-    if (a.status !== "Completed") {
-      notifications.push({
-        id: id++,
-        message: `Audit "${a.name}" is pending completion.`,
-        type: "warning",
-      });
-    }
-  });
-
-  const count = notifications.length;
+  const count = items.length;
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-full bg-white shadow hover:bg-gray-100"
-      >
-        <Bell className="h-6 w-6 text-gray-700" />
-        {count > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-            {count}
-          </span>
-        )}
-      </button>
+    <div
+      className="absolute right-0 mt-2 w-96 bg-white shadow-lg border rounded-lg overflow-hidden z-50"
+      ref={dropdownRef}
+    >
+      <div className="p-4 text-gray-700 font-medium border-b">Notifications</div>
 
-      {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white shadow-lg rounded-lg border border-gray-200 z-50">
-          <div className="p-3 font-semibold border-b text-gray-700">
-            Notifications
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <p className="p-3 text-gray-500 text-sm">
-                ✅ All systems healthy.
-              </p>
-            ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`p-3 border-b text-sm ${
-                    n.type === "warning"
-                      ? "bg-yellow-50 border-yellow-200"
-                      : n.type === "alert"
-                      ? "bg-red-50 border-red-200"
-                      : "bg-blue-50 border-blue-200"
-                  }`}
-                >
-                  {n.message}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      <div className="max-h-96 overflow-auto">
+        {loading ? (
+          <div className="p-4 text-sm text-gray-500">Loading...</div>
+        ) : count === 0 ? (
+          <div className="p-4 text-sm text-gray-500">No notifications</div>
+        ) : (
+          items.map((n) => (
+            <div
+              key={n.id}
+              onClick={() => handleClickNotification(n)}
+              className="p-3 border-b hover:bg-gray-50 cursor-pointer"
+            >
+              <div className="text-sm font-semibold capitalize">{n.type}</div>
+              <div className="text-sm text-gray-700">{n.message}</div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="p-2 text-xs text-gray-500 text-center border-t">
+        {count} notification{count !== 1 ? "s" : ""}
+      </div>
     </div>
   );
 }

@@ -26,14 +26,6 @@ def seed_risks(n=10):
             review_date=fake.date_this_year(),
         )
 
-def seed_compliance(n=10):
-    for _ in range(n):
-        ComplianceClause.objects.create(
-            clause_number=f"ISO7101:{fake.random_int(min=100, max=999)}",
-            description=fake.text(100),
-            status=random.choice(["NI", "P", "IP", "MI", "O"]),
-        )
-
 def seed_audits(n=5):
     for _ in range(n):
         Audit.objects.create(
@@ -65,7 +57,6 @@ def seed_findings(n=10):
 
 if __name__ == "__main__":
     seed_risks()
-    seed_compliance()
     seed_audits()
     seed_findings()
     print("✅ Database seeded successfully.")

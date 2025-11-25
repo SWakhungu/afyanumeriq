@@ -1,4 +1,41 @@
 from django.db import models
+from django.contrib.auth.models import User
+
+
+# Organization Settings
+class Organization(models.Model):
+    name = models.CharField(max_length=200, default="Your Organization")
+    logo = models.ImageField(upload_to="logos/", blank=True, null=True)
+    website = models.URLField(blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Organization"
+
+    def __str__(self):
+        return self.name
+
+
+# User Roles
+class UserProfile(models.Model):
+    ROLE_CHOICES = [
+        ("admin", "Administrator"),
+        ("auditor", "Auditor"),
+        ("staff", "Staff"),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="staff")
+    department = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_role_display()}"
 
 
 # Risk Register

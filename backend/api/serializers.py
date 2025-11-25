@@ -1,12 +1,100 @@
 # api/serializers.py
 from rest_framework import serializers
-from .models import Risk, ComplianceClause, Audit, Finding
+from django.contrib.auth.models import User
+from .models import Risk, ComplianceClause, Audit, Finding, Organization, UserProfile
 
+
+# ---------------------------------------------------------
+# ORGANIZATION SERIALIZER
+# ---------------------------------------------------------
+class OrganizationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Organization
+        fields = "__all__"
+        read_only_fields = ("id", "logo", "created_at", "updated_at")
+        extra_kwargs = {
+            "website": {"allow_blank": True, "required": False},
+            "email": {"allow_blank": True, "required": False},
+            "phone": {"allow_blank": True, "required": False},
+            "address": {"allow_blank": True, "required": False},
+        }
+
+
+# ---------------------------------------------------------
+# USER PROFILE SERIALIZER
+# ---------------------------------------------------------
+class UserProfileSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
+    first_name = serializers.CharField(source="user.first_name", read_only=True)
+    last_name = serializers.CharField(source="user.last_name", read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = (
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "role",
+            "department",
+            "created_at",
+        )
+        read_only_fields = (
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "created_at",
+        )
+
+
+# ---------------------------------------------------------
+# USER DETAILS (LIST + EDIT)
+# ---------------------------------------------------------
+class UserDetailSerializer(serializers.ModelSerializer):
+    profile = UserProfileSerializer(read_only=True)
+    department = serializers.CharField(
+        source="profile.department", required=False, allow_blank=True
+    )
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "profile",
+            "department",
+        )
+        read_only_fields = ("id",)
+
+    def update(self, instance, validated_data):
+        # handle department
+        profile_fields = validated_data.pop("profile", {})
+        dept = profile_fields.get("department")
+
+        if dept is not None:
+            instance.profile.department = dept
+            instance.profile.save()
+
+        # Update User fields normally
+        return super().update(instance, validated_data)
+
+
+# ---------------------------------------------------------
+# RISK SERIALIZER
+# ---------------------------------------------------------
 class RiskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Risk
         fields = "__all__"
-        read_only_fields = ("risk_score", "risk_level")  # computed server-side
+        read_only_fields = ("risk_score", "risk_level")
 
     def _level_from_score(self, score: float) -> str:
         if score <= 5:
@@ -37,14 +125,16 @@ class RiskSerializer(serializers.ModelSerializer):
 class ComplianceClauseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComplianceClause
-        fields = ("id",
+        fields = (
+            "id",
             "clause_number",
             "short_description",
             "status",
             "owner",
             "comments",
             "evidence",
-            "last_updated",)
+            "last_updated",
+        )
 
 
 class FindingSerializer(serializers.ModelSerializer):
@@ -59,3 +149,33 @@ class AuditSerializer(serializers.ModelSerializer):
     class Meta:
         model = Audit
         fields = "__all__"
+
+
+# ---------------------------------------------------------
+# CREATE USER
+# ---------------------------------------------------------
+class CreateUserSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(choices=UserProfile.ROLE_CHOICES)
+    department = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists")
+        return value
+
+    def create(self, validated_data):
+        dept = validated_data.pop("department", "")
+        role = validated_data.pop("role")
+
+        user = User.objects.create_user(**validated_data)
+
+        UserProfile.objects.create(
+            user=user,
+            role=role,
+            department=dept or "",
+        )
+
+        return user

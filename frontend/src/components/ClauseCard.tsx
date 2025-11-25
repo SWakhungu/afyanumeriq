@@ -44,6 +44,8 @@ export default function ClauseCard({ clause, onChange }: Props) {
   const { show } = useToast();
   const [saving, setSaving] = useState(false);
   const [localStatus, setLocalStatus] = useState<Status>(clause.status);
+  const [editingOwner, setEditingOwner] = useState(false);
+  const [localOwner, setLocalOwner] = useState(clause.owner || "");
 
   const evidenceList = useMemo(
     () => normalizeEvidence(clause.evidence),
@@ -60,7 +62,11 @@ export default function ClauseCard({ clause, onChange }: Props) {
       return;
     }
 
-    if (isUpgrade(prev, next) && (next === "MI" || next === "O") && !hasEvidence) {
+    if (
+      isUpgrade(prev, next) &&
+      (next === "MI" || next === "O") &&
+      !hasEvidence
+    ) {
       setLocalStatus(prev);
       show("You must upload evidence before upgrading to MI or O.", "info");
       return;
@@ -75,11 +81,17 @@ export default function ClauseCard({ clause, onChange }: Props) {
         body: JSON.stringify({ status: next }),
       });
 
-      show(`Clause ${clause.clause_number} set to ${STATUS_LABELS[next]}`, "success");
+      show(
+        `Clause ${clause.clause_number} set to ${STATUS_LABELS[next]}`,
+        "success"
+      );
       onChange?.({ ...clause, status: next });
     } catch (e: any) {
       setLocalStatus(prev);
-      show(`Failed to update status: ${e?.message || "Unknown error"}`, "error");
+      show(
+        `Failed to update status: ${e?.message || "Unknown error"}`,
+        "error"
+      );
     } finally {
       setSaving(false);
     }
@@ -102,9 +114,64 @@ export default function ClauseCard({ clause, onChange }: Props) {
       <div className="text-sm space-y-1">
         <div>
           <span className="font-medium">Owner:</span>{" "}
-          <span className={clause.owner === "Unassigned" ? "opacity-50" : ""}>
-            {clause.owner}
-          </span>
+          {!editingOwner ? (
+            <span className={clause.owner === "Unassigned" ? "opacity-50" : ""}>
+              {clause.owner}
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <input
+                type="text"
+                value={localOwner}
+                onChange={(e) => setLocalOwner(e.target.value)}
+                className="px-2 py-1 border rounded"
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    setSaving(true);
+                    const updated = await apiFetch(
+                      `/compliance/${clause.id}/`,
+                      {
+                        method: "PATCH",
+                        body: JSON.stringify({ owner: localOwner }),
+                      }
+                    );
+                    show("Owner updated ✅", "success");
+                    setEditingOwner(false);
+                    onChange?.({ ...clause, owner: updated.owner });
+                  } catch (err: any) {
+                    show(
+                      `Failed to update owner: ${
+                        err?.message || "Unknown error"
+                      }`,
+                      "error"
+                    );
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className="px-2 py-1 bg-teal-600 text-white rounded text-sm"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setLocalOwner(clause.owner || "");
+                  setEditingOwner(false);
+                }}
+                className="px-2 py-1 border rounded text-sm"
+              >
+                Cancel
+              </button>
+            </span>
+          )}
+          <button
+            onClick={() => setEditingOwner(!editingOwner)}
+            className="ml-3 text-xs text-gray-500 hover:text-gray-700"
+          >
+            {editingOwner ? "Edit" : "Edit"}
+          </button>
         </div>
         {clause.comments && (
           <div>
@@ -125,7 +192,12 @@ export default function ClauseCard({ clause, onChange }: Props) {
               <ul className="list-disc ml-5">
                 {evidenceList.map((ev, i) => (
                   <li key={i}>
-                    <a href={ev} className="underline" target="_blank" rel="noreferrer">
+                    <a
+                      href={ev}
+                      className="underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       {ev.split("/").pop()}
                     </a>
                   </li>
@@ -163,7 +235,9 @@ export default function ClauseCard({ clause, onChange }: Props) {
                     });
                   } catch (err: any) {
                     show(
-                      `Failed to upload evidence: ${err?.message || "Unknown error"}`,
+                      `Failed to upload evidence: ${
+                        err?.message || "Unknown error"
+                      }`,
                       "error"
                     );
                   } finally {
@@ -199,10 +273,14 @@ export default function ClauseCard({ clause, onChange }: Props) {
           {STATUSES.map((s) => {
             const oneStep = isValidTransition(localStatus, s);
             const needsEvidence =
-              isUpgrade(localStatus, s) && (s === "MI" || s === "O") && !hasEvidence;
+              isUpgrade(localStatus, s) &&
+              (s === "MI" || s === "O") &&
+              !hasEvidence;
 
             const disabled =
-              s === localStatus || (!oneStep && s !== localStatus) || needsEvidence;
+              s === localStatus ||
+              (!oneStep && s !== localStatus) ||
+              needsEvidence;
 
             return (
               <option key={s} value={s} disabled={disabled}>
