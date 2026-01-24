@@ -57,7 +57,7 @@ export default function AuditPage() {
   const fetchAudits = async () => {
     setLoading(true);
     try {
-      const data = (await apiFetch("/audits/")) as Audit[];
+      const data = (await apiFetch("/audits/?standard=iso-7101")) as Audit[];
       let list = data ?? [];
 
       if (statusFilter === "Scheduled")
@@ -93,7 +93,7 @@ export default function AuditPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-semibold mb-4">Audit & Findings</h1>
+      <h1 className="text-xl font-semibold mb-4">ISO 7101 Audit & Findings</h1>
 
       {/* Filters + Schedule button */}
       <div className="flex flex-col md:flex-row gap-3 mb-5 items-center">

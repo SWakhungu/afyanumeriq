@@ -1,58 +1,97 @@
 from django.core.management.base import BaseCommand
+from django.db import transaction
 from api.models import ComplianceClause
 
+"""
+ISO 7101:2023 — AfyaNumeriq Canonical Interpretation
+
+This seeder represents a practitioner-oriented, merged interpretation
+of ISO 7101 designed for operational healthcare use.
+
+Intentional merges for clarity and usability:
+- Clause 7.4 + 7.5 merged
+- Clause 8.2, 8.3, and 8.10 merged
+- Clause 8.12 (patient safety cluster) merged from 9 subclauses
+- Clause 9.1, 9.2, 9.3 merged
+- Clause 10.2 merged into corrective action lifecycle
+
+This is a deliberate product decision.
+"""
+
+STANDARD = "iso-7101"
+
 ISO_7101_CLAUSES = [
-    ("4.1", "Identified the external and internal issues that affect the organization and the healthcare quality management system."),
-    ("4.2", "Clear understanding of the needs and expectations of interested parties."),
-    ("4.3", "The scope of the management system for quality is clearly determined."),
-    ("4.4", "The MS (management system) for quality is built and maintained in its entirety."),
-    ("5.1", "Ensuring that the MS for quality supports continual improvement."),
-    ("5.2", "The documented Healthcare Quality Policy containing the healthcare objectives is relevant to the organization."),
-    ("5.3", "Responsibilities and levels of authority for individuals responsible for the HQMS must be understood."),
-    ("5.4", "Service user focus — Has management ensured service users' rights are clearly known?"),
-    ("5.5", "The healthcare organization ensures access to care in accordance with its defined mandate and applicable laws and regulations."),
-    ("6.1", "Actions to address risks and opportunities (includes: documenting risks and opportunities from context & interested parties, shared risk culture, and documented system to identify risks/opportunities)."),
-    ("6.2", "The healthcare quality objectives and plans to achieve them."),
-    ("6.3", "Changes to the HQMS are determined and managed in a planned manner."),
-    ("7.1", "The organization has determined and provided the resources (people, budget, infrastructure) required for the HQMS."),
-    ("7.2", "Individuals are competent, and records are kept as evidence."),
-    ("7.3", "Individuals are aware of the HQMS, the objectives applicable to their roles, and their contribution to the HQMS."),
-    ("7.4", "The organization must determine what to communicate about the HQMS internally and externally."),
-    ("7.5", "Documented information: consideration of level of documentation, creation/updating, controls (title/date/author/ref), protection of information systems, electronic info control, and definition of clinical vs non-clinical records."),
-    ("8.1", "Maintain processes to run the HQMS and implement actions identified in Clause 6."),
-    ("8.2", "Healthcare facilities management and maintenance; contingencies for facilities and services; proper use and safety of equipment."),
-    ("8.3", "Waste management, waste reduction planning, and environmental responsibility."),
-    ("8.4", "Responsible handling and storage of materials."),
-    ("8.5", "Service user belongings (processes to manage/return items)."),
-    ("8.6", "Consideration and safe adoption of emerging technologies."),
-    ("8.7", "Service design taking a user-centric approach."),
-    ("8.8", "Ensure that clinical and non-clinical externally provided products and services conform to organizational requirements."),
-    ("8.9", "Provision of services (delivery and management of services)."),
-    ("8.10", "People-centred care: inclusivity, diversity, health literacy, service user experience and assessment, compassionate care, cultural competence training, health literacy for workforce/service users, co-production, and workforce wellbeing."),
+    # --- 4 Context (4) ---
+    ("4.1", "External and internal factors affecting the HQMS are identified and reviewed."),
+    ("4.2", "Needs of relevant interested parties are clearly understood and documented."),
+    ("4.3", "The scope of the healthcare quality management system is defined."),
+    ("4.4", "The HQMS is established, implemented, maintained, and continually improved."),
+
+    # --- 5 Leadership (5) ---
+    ("5.1", "Leadership ensures the HQMS supports continual improvement and quality outcomes."),
+    ("5.2", "A documented healthcare quality policy is approved, communicated, and maintained."),
+    ("5.3", "Responsibilities and authorities for HQMS roles are assigned and understood."),
+    ("5.4", "Service user needs and rights are prioritized and communicated across the organization."),
+    ("5.5", "Access to healthcare services is ensured in line with laws and organizational mandate."),
+
+    # --- 6 Planning (3) ---
+    ("6.1", "Risks and opportunities are identified, evaluated, and actions are planned."),
+    ("6.2", "Healthcare quality objectives are established and supported by measurable plans."),
+    ("6.3", "Changes to the HQMS are controlled, documented, and implemented in a planned manner."),
+
+    # --- 7 Support (5) ---
+    ("7.1", "Adequate resources (people, infrastructure, budget) are provided for the HQMS."),
+    ("7.2", "Personnel are competent and records of competence are maintained."),
+    ("7.3", "Staff understand the HQMS, their roles, and contribution to quality outcomes."),
+    ("7.4", "Internal and external HQMS communication and documented information are defined, controlled, and secured."),
+    ("7.5", "Information systems and clinical and non-clinical records are protected, controlled, and accessible."),
+
+    # --- 8 Operation (12) ---
+    ("8.1", "Operational processes are planned, implemented, and controlled to achieve HQMS goals."),
+    ("8.2", "Facilities, equipment, infrastructure, and environmental responsibilities are managed safely and effectively."),
+    ("8.3", "Materials, waste, and service user belongings are handled and managed responsibly."),
+    ("8.4", "Materials are handled and stored safely to prevent harm or loss."),
+    ("8.5", "Service user belongings are documented, protected, and returned appropriately."),
+    ("8.6", "New and emerging healthcare technologies are evaluated and safely adopted."),
+    ("8.7", "Services are designed and delivered with a user-centered approach."),
+    ("8.8", "Externally provided clinical and non-clinical services meet defined requirements."),
+    ("8.9", "Healthcare services are delivered, monitored, and managed under controlled conditions."),
+    ("8.10", "Care is people-centered, inclusive, culturally competent, and supports workforce wellbeing."),
     ("8.11", "Healthcare is delivered ethically, respectfully, and in accordance with professional standards."),
-    ("8.12", "Patient safety cluster (patient safety culture; identification processes; medication management; surgical safety; IPC program; prevention of falls, pressure ulcers, thromboembolism; diagnostic safety; blood transfusion safety)."),
-    ("9.1", "Monitoring, measurement, analysis and evaluation of the HQMS, including healthcare quality indicators, methods, and use of results to inform strategic quality directions."),
-    ("9.2", "Internal audit and internal audit programme to verify conformity and performance of the HQMS."),
-    ("9.3", "Management review (inputs, outputs and use of results to drive improvement)."),
-    ("10.1", "Continual improvement of the HQMS."),
-    ("10.2", "Nonconformity & corrective action and management of nonconformity and corrective action.")
+    ("8.12", "Patient safety systems prevent harm and support safe clinical practice across all care processes."),
+
+    # --- 9 Performance Evaluation (3) ---
+    ("9.1", "HQMS performance is monitored, measured, analyzed, and used for improvement."),
+    ("9.2", "Internal audits are planned and conducted to verify HQMS effectiveness."),
+    ("9.3", "Management reviews evaluate HQMS performance and drive improvement actions."),
+
+    # --- 10 Improvement (2) ---
+    ("10.1", "The organization continually improves the suitability and effectiveness of the HQMS."),
+    ("10.2", "Nonconformities are corrected and root causes addressed through corrective actions."),
 ]
 
+
 class Command(BaseCommand):
-    help = 'Seeds the ISO 7101 compliance clauses (deletes existing fake data first)'
+    help = "Seeds ISO 7101:2023 (AfyaNumeriq canonical 34-clause interpretation)"
 
     def handle(self, *args, **kwargs):
-        # Clear existing clauses
-        ComplianceClause.objects.all().delete()
-        self.stdout.write('Cleared existing compliance clauses')
+        with transaction.atomic():
+            ComplianceClause.objects.filter(standard=STANDARD).delete()
 
-        # Create the real ISO 7101 clauses
-        for clause_number, description in ISO_7101_CLAUSES:
-            ComplianceClause.objects.create(
-                clause_number=clause_number,
-                description=description,
-                status="NI",  # Start all as Not Implemented
-                short_description=description[:100] + ('...' if len(description) > 100 else '')
-            )
-        
-        self.stdout.write(self.style.SUCCESS(f'✅ Successfully created {len(ISO_7101_CLAUSES)} ISO 7101 clauses'))
+            objs = [
+                ComplianceClause(
+                    standard=STANDARD,
+                    clause_number=num,
+                    description=text,
+                    short_description=text,
+                    status="NI",
+                    owner="Unassigned",
+                )
+                for num, text in ISO_7101_CLAUSES
+            ]
+
+            ComplianceClause.objects.bulk_create(objs)
+
+        self.stdout.write(
+            self.style.SUCCESS(f"✅ Seeded {len(objs)} ISO 7101 clauses (canonical)")
+        )

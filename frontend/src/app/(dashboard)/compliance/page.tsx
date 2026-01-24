@@ -6,16 +6,19 @@ import { useAfyaStore } from "@/store/useAfyaStore";
 import ComplianceLegend from "@/components/ComplianceLegend";
 import ClauseCard from "@/components/ClauseCard";
 
+const STANDARD = "iso-7101"; // 🔒 Explicit, non-negotiable
+
 export default function CompliancePage() {
   const { complianceRecords, setComplianceRecords } = useAfyaStore();
 
-  // ✅ Always fetch fresh, backend already returns sorted data
   useEffect(() => {
-    apiFetch("/compliance/")
-      .then((data) => setComplianceRecords(data))
+    apiFetch(`/compliance/?standard=${STANDARD}`)
+      .then((data) => {
+        setComplianceRecords(data);
+      })
       .catch((err) => {
         console.error("Failed to fetch compliance:", err);
-        // Show error to user using toast
+        setComplianceRecords([]); // defensive
       });
   }, [setComplianceRecords]);
 
@@ -27,7 +30,9 @@ export default function CompliancePage() {
       </div>
 
       {complianceRecords.length === 0 ? (
-        <p className="text-gray-500 italic">Loading compliance data...</p>
+        <p className="text-gray-500 italic">
+          No compliance clauses found for this standard.
+        </p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {complianceRecords.map((clause) => (

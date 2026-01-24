@@ -1,7 +1,16 @@
 # api/serializers.py
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Risk, ComplianceClause, Audit, Finding, Organization, UserProfile
+from .isms_models import Clause, Control
+from .isms_serializers import ClauseSerializer, ControlSerializer
+from .models import (
+    Risk,
+    ComplianceClause,
+    Audit,
+    Finding,
+    Organization,
+    UserProfile,
+)
 
 
 # ---------------------------------------------------------
@@ -138,6 +147,22 @@ class ComplianceClauseSerializer(serializers.ModelSerializer):
 
 
 class FindingSerializer(serializers.ModelSerializer):
+    clause = ClauseSerializer(read_only=True)
+    clause_id = serializers.PrimaryKeyRelatedField(
+        source="clause",
+        queryset=Clause.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    controls = ControlSerializer(many=True, read_only=True)
+    control_ids = serializers.PrimaryKeyRelatedField(
+        source="controls",
+        queryset=Control.objects.all(),
+        many=True,
+        write_only=True,
+        required=False,
+    )    
     class Meta:
         model = Finding
         fields = "__all__"
@@ -150,6 +175,60 @@ class AuditSerializer(serializers.ModelSerializer):
         model = Audit
         fields = "__all__"
 
+    # --------------------------------------------------
+    # VALIDATION (STANDARD-AWARE, ISO-GOVERNED)
+    # --------------------------------------------------
+    def validate(self, attrs):
+        # Determine standard (create vs update)
+        standard = attrs.get(
+            "standard",
+            getattr(self.instance, "standard", None)
+        )
+
+        if not standard:
+            raise serializers.ValidationError({
+                "standard": "Audit standard must be specified explicitly."
+            })
+
+        # ISO/IEC 27001 — Clause 9.2
+        if standard == "iso-27001":
+            scope = attrs.get(
+                "scope",
+                getattr(self.instance, "scope", None)
+            )
+            if not scope or not scope.strip():
+                raise serializers.ValidationError({
+                    "scope": "ISMS audit scope is required for ISO/IEC 27001 audits."
+                })
+
+        return attrs
+
+    # --------------------------------------------------
+    # CREATE (ENFORCE STANDARD OWNERSHIP)
+    # --------------------------------------------------
+    def create(self, validated_data):
+        request = self.context.get("request")
+
+        # 🔒 Enforce explicit standard on creation
+        standard = None
+        if request:
+            standard = request.data.get("standard")
+
+        if not standard:
+            raise serializers.ValidationError({
+                "standard": "Audit standard must be explicitly provided at creation."
+            })
+
+        validated_data["standard"] = standard
+        return super().create(validated_data)
+
+    # --------------------------------------------------
+    # UPDATE (PREVENT CROSS-STANDARD BLEED)
+    # --------------------------------------------------
+    def update(self, instance, validated_data):
+        # 🔒 Standard is immutable after creation
+        validated_data.pop("standard", None)
+        return super().update(instance, validated_data)
 
 # ---------------------------------------------------------
 # CREATE USER

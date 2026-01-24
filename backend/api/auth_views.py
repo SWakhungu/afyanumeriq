@@ -35,17 +35,27 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        tenant = getattr(request, "tenant", None)
+        if tenant is None:
+            return Response(
+                {"detail": "Tenant not resolved."},
+                status=400,
+            )
         username = request.data.get("username")
         password = request.data.get("password")
 
         user = authenticate(username=username, password=password)
         if not user:
             return Response({"detail": "Invalid credentials"}, status=400)
+        # Enforce tenant membership
+        if not hasattr(user, "profile") or user.profile.organization != tenant:
+            return Response({"detail": "Invalid credentials for this organization"}, status=400)
 
         refresh = RefreshToken.for_user(user)
         access = str(refresh.access_token)
 
-        response = Response({"access": access})
+        payLoad = {"access": access, "user": UserDetailSerializer(user).data}
+        response = Response(payLoad)
 
         secure = cookie_secure_flag()
         samesite = cookie_samesite_for_env()

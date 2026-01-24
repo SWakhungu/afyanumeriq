@@ -1,3 +1,4 @@
+// src/components/sidebar.tsx
 "use client";
 
 import { useState } from "react";
@@ -13,11 +14,134 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Network,
 } from "lucide-react";
+
+/**
+ * Standards that live under a URL prefix:
+ *   /27001/...
+ *   /42001/...
+ * etc.
+ *
+ * ISO 7101 is the root standard => no prefix ("/")
+ */
+const PREFIX_STANDARDS = new Set(["27001", "42001", "13485", "15189", "17025"]);
+
+/**
+ * Optional per-standard landing overrides per module.
+ * Example:
+ *   For ISO 27001, "Risks" should start on Assets.
+ */
+const NAV_OVERRIDES: Record<string, Partial<Record<NavKey, string>>> = {
+  "27001": {
+    risks: "/assets",
+    // compliance: "/compliance",
+    // audits: "/audit",
+    // reports: "/reports",
+  },
+};
+
+type NavKey =
+  | "home"
+  | "risks"
+  | "compliance"
+  | "audits"
+  | "reports"
+  | "tprm"
+  | "settings";
+
+function getStandardPrefix(pathname: string) {
+  // "/27001/compliance" -> "27001"
+  const first = (pathname.split("/")[1] || "").trim();
+  return PREFIX_STANDARDS.has(first) ? first : null;
+}
+
+function buildHref(base: string, key: NavKey) {
+  const std = base.replace("/", ""); // "" or "27001" etc
+
+  // Default module routes
+  const defaults: Record<NavKey, string> = {
+    home: "/",
+    risks: "/risk",
+    compliance: "/compliance",
+    audits: "/audit",
+    reports: "/reports",
+    tprm: "/tprm",
+    settings: "/settings",
+  };
+
+  // Apply per-standard overrides (e.g., 27001 risks => /assets)
+  const override = std ? NAV_OVERRIDES[std]?.[key] : undefined;
+  const path = override ?? defaults[key];
+
+  // ISO 7101 is root (base="") => "/risk"
+  // Other standards have base="/27001" => "/27001/risk" or "/27001/assets"
+  if (!base) return path;
+
+  // Special case: home should go to the base itself ("/27001")
+  if (key === "home") return base;
+
+  return `${base}${path}`;
+}
+
+function isActive(pathname: string, href: string) {
+  // exact match OR "startsWith href/" for section highlighting
+  if (href === "/") return pathname === "/";
+  if (pathname === href) return true;
+  return pathname.startsWith(href + "/");
+}
 
 const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const pathname = usePathname();
+  const pathname = usePathname() || "/";
+
+  const std = getStandardPrefix(pathname);
+  const base = std ? `/${std}` : ""; // "" means ISO 7101 root
+
+  const links = [
+    {
+      key: "home" as const,
+      label: "Home",
+      icon: <Home size={18} />,
+      href: buildHref(base, "home"),
+    },
+    {
+      key: "risks" as const,
+      label: "Risks",
+      icon: <ShieldAlert size={18} />,
+      href: buildHref(base, "risks"),
+    },
+    {
+      key: "compliance" as const,
+      label: "Compliance",
+      icon: <CheckCircle size={18} />,
+      href: buildHref(base, "compliance"),
+    },
+    {
+      key: "audits" as const,
+      label: "Audits",
+      icon: <ClipboardList size={18} />,
+      href: buildHref(base, "audits"),
+    },
+    {
+      key: "reports" as const,
+      label: "Reports",
+      icon: <FileText size={18} />,
+      href: buildHref(base, "reports"),
+    },
+    {
+      key: "tprm" as const,
+      label: "TPRM",
+      icon: <Network size={18} />,
+      href: buildHref(base, "tprm"),
+    },
+    {
+      key: "settings" as const,
+      label: "Settings",
+      icon: <Settings size={18} />,
+      href: buildHref(base, "settings"),
+    },
+  ];
 
   return (
     <div
@@ -33,7 +157,7 @@ const Sidebar = () => {
       >
         <div className="flex items-center justify-center w-full">
           <Image
-            src="/AfyaNumeriq LOGO.png" // ✅ Updated logo file (official one in /public)
+            src="/AfyaNumeriq LOGO.png"
             alt="AfyaNumeriq Logo"
             width={collapsed ? 40 : 120}
             height={collapsed ? 40 : 120}
@@ -67,53 +191,16 @@ const Sidebar = () => {
 
       {/* --- Navigation Menu --- */}
       <nav className="mt-4 flex flex-col gap-1">
-        <SidebarLink
-          href="/"
-          icon={<Home size={18} />}
-          label="Home"
-          collapsed={collapsed}
-          active={pathname === "/"}
-        />
-
-        <SidebarLink
-          href="/risk"
-          icon={<ShieldAlert size={18} />}
-          label="Risks"
-          collapsed={collapsed}
-          active={pathname === "/risk"}
-        />
-
-        <SidebarLink
-          href="/compliance"
-          icon={<CheckCircle size={18} />}
-          label="Compliance"
-          collapsed={collapsed}
-          active={pathname === "/compliance"}
-        />
-
-        <SidebarLink
-          href="/audit"
-          icon={<ClipboardList size={18} />}
-          label="Audits"
-          collapsed={collapsed}
-          active={pathname === "/audit"}
-        />
-
-        <SidebarLink
-          href="/reports"
-          icon={<FileText size={18} />}
-          label="Reports"
-          collapsed={collapsed}
-          active={pathname === "/reports"}
-        />
-
-        <SidebarLink
-          href="/settings"
-          icon={<Settings size={18} />}
-          label="Settings"
-          collapsed={collapsed}
-          active={pathname === "/settings"}
-        />
+        {links.map((l) => (
+          <SidebarLink
+            key={l.key}
+            href={l.href}
+            icon={l.icon}
+            label={l.label}
+            collapsed={collapsed}
+            active={isActive(pathname, l.href)}
+          />
+        ))}
       </nav>
     </div>
   );

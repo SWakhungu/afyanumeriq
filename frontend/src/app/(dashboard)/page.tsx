@@ -46,7 +46,7 @@ export default function DashboardPage() {
   return (
     <div className="p-8 space-y-6">
       <h1 className="text-3xl font-semibold text-gray-800">
-        Dashboard Overview
+        HQMS Dashboard Overview
       </h1>
 
       {/* Stats Row */}
@@ -110,7 +110,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-10 text-gray-500 text-sm italic">
-        Live data powered by AfyaNumeriq Compliance & Risk Modules
+        Live ISO 7101 data powered by AfyaNumeriq Compliance & Risk Modules
       </div>
     </div>
   );

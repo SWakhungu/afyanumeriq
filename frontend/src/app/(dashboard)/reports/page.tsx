@@ -2,13 +2,12 @@
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { apiBase } from "@/lib/api"; // ✅ ensures same base as rest of app
+import { apiBase } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 
 export default function ReportsPage() {
   const { show } = useToast();
 
-  // Shared download helper
   function downloadFile(url: string, filename: string) {
     const link = document.createElement("a");
     link.href = url;
@@ -18,15 +17,15 @@ export default function ReportsPage() {
     document.body.removeChild(link);
   }
 
-  const handleDownload = (path: string, filename: string) => {
+  function handleDownload(path: string, filename: string) {
     const fullUrl = `${apiBase}${path}`;
     downloadFile(fullUrl, filename);
-    show(`Downloading ${filename}...`, "info");
-  };
+    show(`Downloading ${filename}…`, "info");
+  }
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Reports & Exports</h1>
+      <h1 className="text-2xl font-semibold">ISO 7101 — Reports & Exports</h1>
 
       <Card className="p-6 space-y-4">
         <h2 className="text-lg font-semibold">Data Exports</h2>
@@ -34,29 +33,29 @@ export default function ReportsPage() {
         <div className="flex flex-col md:flex-row gap-4">
           <Button
             onClick={() =>
-              handleDownload("/reports/compliance.csv", "compliance.csv")
+              handleDownload(
+                `/reports/compliance.csv`,
+                "iso-7101-compliance.csv"
+              )
             }
           >
-            Download Compliance CSV
+            Compliance CSV
           </Button>
 
           <Button
             onClick={() =>
-              handleDownload("/reports/compliance.pdf", "compliance.pdf")
+              handleDownload(`/reports/risks.csv`, "iso-7101-risks.csv")
             }
           >
-            Download Compliance PDF
+            Risk Register CSV
           </Button>
 
           <Button
-            onClick={() => handleDownload("/reports/risks.csv", "risks.csv")}
+            onClick={() =>
+              handleDownload(`/reports/audits.csv`, "iso-7101-audits.csv")
+            }
           >
-            Download Risk Register CSV
-          </Button>
-          <Button
-            onClick={() => handleDownload("/reports/audits.csv", "audits.csv")}
-          >
-            Download Audits CSV
+            Audit Summary CSV
           </Button>
         </div>
       </Card>
