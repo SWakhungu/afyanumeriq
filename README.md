@@ -92,7 +92,7 @@ Runs at: `http://127.0.0.1:3000`
 
 ### Asset Management
 
-- Classify and track IS(Information Security) assets
+- Classify and track IS (Information Security) assets
 - Link assets to risks and controls
 - Track asset ownership (legal and technical)
 
@@ -132,7 +132,7 @@ Logout clears local state + cookie.
 
 ### ISO Standards Library
 
-**ISO 27001 Clauses** (114 clauses)
+**ISO 27001 Clauses** (23 clauses, 93 Annex A Controls)
 
 ```bash
 python manage.py seed_iso27001_clauses_global
@@ -145,7 +145,7 @@ python manage.py seed_iso7101
 ```
 
 **ISO 42001 Support**
-Database structure supports ISO 42001, additional seeder can be added as needed.
+Database structure supports ISO/IEC 42001 due to similarities with ISO/IEC 27001, additional seeder can be added as needed.
 
 ### Utility Management Commands
 
@@ -161,7 +161,7 @@ python manage.py import_27001              # Import ISO 27001 data
 
 The platform currently loads demo data for development:
 
-- Fake notifications
+- Example notifications
 - Example organizations
 - Example risks, audits, and compliance records
 - Example users (via seeders)
