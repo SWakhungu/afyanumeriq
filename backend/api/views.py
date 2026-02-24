@@ -1,7 +1,7 @@
 from datetime import date
 
 from django.db.models import Count
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions as REST_permissions
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 
@@ -19,9 +19,17 @@ from .serializers import (
 # =========================================================
 class RiskViewSet(viewsets.ModelViewSet):
     serializer_class = RiskSerializer
+    permission_classes = [
+        REST_permissions.IsAuthenticated
+    ]
 
     def get_queryset(self):
-        qs = Risk.objects.filter(archived=False)
+        # Enforce tenant scoping
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            return Risk.objects.none()
+
+        qs = Risk.objects.filter(organization=tenant, archived=False)
 
         status_filter = self.request.query_params.get("status")
         level_filter = self.request.query_params.get("risk_level")
@@ -42,6 +50,13 @@ class RiskViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def perform_create(self, serializer):
+        """Set organization on create"""
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            raise ValueError("Tenant missing on request. Ensure TenantMiddleware is enabled.")
+        serializer.save(organization=tenant)
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         instance.archived = True
@@ -57,16 +72,32 @@ class AuditViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Enforce standard as a hard data boundary
-        Audit lists must be scoped by standard.
+        Tenant + standard are hard boundaries.
+        List must be scoped by standard.
         """
-        
-        standard = self.request.query_params.get("standard")
-        
-        if not standard:
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
             return Audit.objects.none()
 
-        return Audit.objects.filter(standard=standard)
+        standard = self.request.query_params.get("standard")
+        qs = Audit.objects.filter(organization=tenant)
+
+        # For LIST: require standard
+        if self.action == "list":
+            if not standard:
+                return Audit.objects.none()
+            qs = qs.filter(standard=standard)
+
+        return qs.order_by("-date", "-id")
+
+    def perform_create(self, serializer):
+        """
+        Always set tenant/org on create. Frontend must not send organization.
+        """
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            raise ValueError("Tenant missing on request. Ensure TenantMiddleware is enabled.")
+        serializer.save(organization=tenant)
 
     @action(detail=True, methods=["patch"])
     def update_status(self, request, pk=None):
@@ -80,43 +111,54 @@ class AuditViewSet(viewsets.ModelViewSet):
             )
 
         audit.status = new_status
-        audit.save()
-        return Response({"status": "updated"})
-
-    
+        audit.save(update_fields=["status"])
+        return Response({"status": "updated"})    
 # =========================================================
 #   FINDINGS VIEWSET
 # =========================================================
 class FindingViewSet(viewsets.ModelViewSet):
     serializer_class = FindingSerializer
+
     def get_queryset(self):
         """
-        Enforce standard as a hard data boundary via Audit.
+        Tenant boundary is always enforced via audit.organization.
+        Standard boundary is enforced for LIST (and optional for detail).
         """
-        qs = Finding.objects.select_related("audit")
-        audit_id = self.request.query_params.get("audit_id")
-        standard = self.request.query_params.get("standard")
-        
-        if not standard:
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
             return Finding.objects.none()
-            qs = qs.filter(audit__standard=standard)        
+
+        qs = Finding.objects.select_related("audit").filter(audit__organization=tenant)
+
+        standard = self.request.query_params.get("standard")
+        audit_id = self.request.query_params.get("audit_id")
+
+        # For LIST: require standard (prevents mixed-standard listing)
+        if self.action == "list":
+            if not standard:
+                return Finding.objects.none()
+            qs = qs.filter(audit__standard=standard)
+
+        # For detail/update: standard is optional; tenant boundary already enforced.
+        # If standard provided, enforce it too.
+        if standard:
+            qs = qs.filter(audit__standard=standard)
+
         if audit_id:
             qs = qs.filter(audit__id=audit_id)
-        return qs
-    
+
+        return qs.order_by("-id")
+
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         new_status = request.data.get("status")
 
         if new_status:
             instance.status = new_status
-            instance.completion_date = (
-                date.today() if new_status == "Closed" else None
-            )
-            instance.save()
+            instance.completion_date = date.today() if new_status == "Closed" else None
+            instance.save(update_fields=["status", "completion_date"])
 
         return Response(self.serializer_class(instance).data)
-
 
 # =========================================================
 #   COMPLIANCE CLAUSE VIEWSET (CORRECT & HARDENED)

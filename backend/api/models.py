@@ -3,8 +3,10 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from .tprm_models import *
 import uuid
 import re
+
 
 RESERVED_SUBDOMAINS = {
     "www", "api", "admin", "app", "mail", "support", "staging", "demo",
@@ -99,7 +101,7 @@ class UserProfile(models.Model):
 
 
 # =========================================================
-# Risk Register  (ISO 7101 module)  ⚠️ still needs tenant scoping later
+# Risk Register  (ISO 7101 module) 
 # =========================================================
 class Risk(models.Model):
     organization = models.ForeignKey(
@@ -227,7 +229,7 @@ class Audit(models.Model):
     )
 
     class Meta:
-        unique_together = ("organization", "audit_id")
+        unique_together = ("organization", "standard", "audit_id")
         indexes = [
             models.Index(fields=["organization", "standard"]),
             models.Index(fields=["organization", "status"]),
@@ -270,3 +272,35 @@ class Finding(models.Model):
 
     def __str__(self):
         return f"{self.finding_id} – {self.status}"
+
+
+# =========================================================
+# Platform Updates (for home page feed)
+# =========================================================
+class PlatformUpdate(models.Model):
+    CATEGORY_CHOICES = [
+        ("feature", "Feature"),
+        ("bugfix", "Bug Fix"),
+        ("announcement", "Announcement"),
+        ("maintenance", "Maintenance"),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default="announcement",
+    )
+    date = models.DateField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date"]
+        verbose_name = "Platform Update"
+        verbose_name_plural = "Platform Updates"
+
+    def __str__(self):
+        return f"{self.title} – {self.get_category_display()}"

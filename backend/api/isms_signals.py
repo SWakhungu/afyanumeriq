@@ -206,6 +206,41 @@ def on_soaentry_saved(sender, instance: SoAEntry, **kwargs):
 
 
 # -------------------------------------------------------------------
+# SIGNAL: Risk SAVED (TREATMENT CHANGED)
+# -------------------------------------------------------------------
+# Trigger:
+#   Risk is saved with a new treatment value
+#
+# Effect:
+#   Recompute coverage and update SoA applicability
+#
+# Reason:
+#   When treatment changes (e.g., Reduce → Accept), the coverage
+#   logic changes: Accept/Transfer/Avoid have coverage = N/A
+# -------------------------------------------------------------------
+
+@receiver(post_save, sender=ISORisk)
+def on_iso_risk_saved(sender, instance: ISORisk, created, **kwargs):
+    """Ensure coverage is recomputed when risk is saved"""
+    if not created:  # Only on updates, not creation (create() handles its own)
+        with transaction.atomic():
+            # If treatment is now "Reduce", mark controls as applicable
+            if instance.treatment == "Reduce":
+                controls = instance.controls.all()
+                SoAEntry.objects.filter(
+                    organization=instance.organization,
+                    control__in=controls,
+                    standard=instance.standard,
+                ).update(applicable=True)
+            
+            # Always recompute coverage
+            aggregate_risk_coverage_for_risk(instance)
+
+            if instance.asset:
+                compute_asset_security(instance.asset)
+
+
+# -------------------------------------------------------------------
 # SIGNAL: Risk ↔ Control RELATIONSHIP CHANGED
 # -------------------------------------------------------------------
 # Trigger:
@@ -213,16 +248,31 @@ def on_soaentry_saved(sender, instance: SoAEntry, **kwargs):
 #   - Control removed from risk
 #
 # Effect:
-#   Recompute coverage immediately
+#   1. Update SoA applicability for affected controls
+#   2. Recompute coverage immediately
 #
 # Reason:
 #   Controls selected during risk treatment directly define coverage
+#   and SoA applicability
 # -------------------------------------------------------------------
 
 @receiver(m2m_changed, sender=ISORisk.controls.through)
 def on_risk_controls_changed(sender, instance: ISORisk, action, **kwargs):
     if action in ("post_add", "post_remove", "post_clear"):
         with transaction.atomic():
+            # If treatment is "Reduce" and controls are added, mark those
+            # controls as applicable in the SoA
+            if instance.treatment == "Reduce":
+                controls = instance.controls.all()
+                
+                # Mark associated SoA entries as applicable
+                SoAEntry.objects.filter(
+                    organization=instance.organization,
+                    control__in=controls,
+                    standard=instance.standard,
+                ).update(applicable=True)
+            
+            # Recompute coverage
             aggregate_risk_coverage_for_risk(instance)
 
             if instance.asset:

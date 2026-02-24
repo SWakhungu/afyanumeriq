@@ -2,14 +2,19 @@
 // FORCE the backend base URL — never use 3000 for API calls.
 // Be defensive: process.env.* may be undefined in some dev setups.
 
+// src/lib/api.ts
+
 const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000";
+  typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : (process.env.NEXT_PUBLIC_BACKEND ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        "http://127.0.0.1:8000");
 
 const API_BASE = `${BACKEND.replace(/\/$/, "")}/api`;
 
 export { API_BASE as apiBase };
+
 
 // ---- HELPERS ---------------------------------------------------
 
@@ -44,8 +49,14 @@ export async function apiFetch(
 ) {
   const url = `${API_BASE}${path}`;
 
-  const token =
-    typeof window !== "undefined" ? (window as any).__AFYA_ACCESS_TOKEN : null;
+  let token =
+  typeof window !== "undefined" ? (window as any).__AFYA_ACCESS_TOKEN : null;
+
+  if (!token && typeof window !== "undefined" && !retry) {
+    // First call after reload: try cookie-based refresh to bootstrap access token
+    token = await tryRefreshToken();
+  }
+
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -126,4 +137,67 @@ export async function apiUpload(
   }
 
   return res.json();
+}
+
+// ---- FILE DOWNLOAD (BLOB) --------------------------------------
+
+export async function apiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+  retry = false
+) {
+  const url = `${API_BASE}${path}`;
+
+  let token =
+    typeof window !== "undefined" ? (window as any).__AFYA_ACCESS_TOKEN : null;
+
+  if (!token && typeof window !== "undefined" && !retry) {
+    // bootstrap access token using cookie refresh
+    token = await tryRefreshToken();
+  }
+
+  const headers: Record<string, string> = {
+    ...(options.headers ? (options.headers as Record<string, string>) : {}),
+  };
+
+  // IMPORTANT: do NOT force Content-Type for downloads
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+
+  // try refresh once on 401
+  if (res.status === 401 && !retry) {
+    const newToken = await tryRefreshToken();
+    if (newToken) return apiFetchBlob(path, options, true);
+  }
+
+  if (!res.ok) {
+    // attempt to parse json error, fallback to text
+    let message = `Download failed (${res.status})`;
+    try {
+      const json = await res.json();
+      if (json && typeof json === "object" && (json as any).detail)
+        message = (json as any).detail;
+      else message = JSON.stringify(json);
+    } catch {
+      try {
+        message = await res.text();
+      } catch {}
+    }
+    throw new Error(message);
+  }
+
+  const blob = await res.blob();
+
+  // optional: filename from Content-Disposition
+  const cd = res.headers.get("content-disposition") || "";
+  let filename: string | null = null;
+  const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i);
+  if (match?.[1]) filename = decodeURIComponent(match[1]);
+
+  return { blob, filename };
 }

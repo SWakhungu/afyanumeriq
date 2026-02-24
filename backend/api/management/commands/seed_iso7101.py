@@ -1,97 +1,126 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from api.models import ComplianceClause
+from django.apps import apps
 
-"""
-ISO 7101:2023 — AfyaNumeriq Canonical Interpretation
-
-This seeder represents a practitioner-oriented, merged interpretation
-of ISO 7101 designed for operational healthcare use.
-
-Intentional merges for clarity and usability:
-- Clause 7.4 + 7.5 merged
-- Clause 8.2, 8.3, and 8.10 merged
-- Clause 8.12 (patient safety cluster) merged from 9 subclauses
-- Clause 9.1, 9.2, 9.3 merged
-- Clause 10.2 merged into corrective action lifecycle
-
-This is a deliberate product decision.
-"""
-
-STANDARD = "iso-7101"
 
 ISO_7101_CLAUSES = [
-    # --- 4 Context (4) ---
-    ("4.1", "External and internal factors affecting the HQMS are identified and reviewed."),
-    ("4.2", "Needs of relevant interested parties are clearly understood and documented."),
+    ("4.1", "External and internal issues affecting the HQMS are identified and reviewed."),
+    ("4.2", "Needs and expectations of relevant interested parties are understood and documented."),
     ("4.3", "The scope of the healthcare quality management system is defined."),
     ("4.4", "The HQMS is established, implemented, maintained, and continually improved."),
-
-    # --- 5 Leadership (5) ---
     ("5.1", "Leadership ensures the HQMS supports continual improvement and quality outcomes."),
-    ("5.2", "A documented healthcare quality policy is approved, communicated, and maintained."),
-    ("5.3", "Responsibilities and authorities for HQMS roles are assigned and understood."),
-    ("5.4", "Service user needs and rights are prioritized and communicated across the organization."),
-    ("5.5", "Access to healthcare services is ensured in line with laws and organizational mandate."),
-
-    # --- 6 Planning (3) ---
-    ("6.1", "Risks and opportunities are identified, evaluated, and actions are planned."),
-    ("6.2", "Healthcare quality objectives are established and supported by measurable plans."),
-    ("6.3", "Changes to the HQMS are controlled, documented, and implemented in a planned manner."),
-
-    # --- 7 Support (5) ---
-    ("7.1", "Adequate resources (people, infrastructure, budget) are provided for the HQMS."),
-    ("7.2", "Personnel are competent and records of competence are maintained."),
-    ("7.3", "Staff understand the HQMS, their roles, and contribution to quality outcomes."),
-    ("7.4", "Internal and external HQMS communication and documented information are defined, controlled, and secured."),
-    ("7.5", "Information systems and clinical and non-clinical records are protected, controlled, and accessible."),
-
-    # --- 8 Operation (12) ---
-    ("8.1", "Operational processes are planned, implemented, and controlled to achieve HQMS goals."),
-    ("8.2", "Facilities, equipment, infrastructure, and environmental responsibilities are managed safely and effectively."),
-    ("8.3", "Materials, waste, and service user belongings are handled and managed responsibly."),
-    ("8.4", "Materials are handled and stored safely to prevent harm or loss."),
-    ("8.5", "Service user belongings are documented, protected, and returned appropriately."),
-    ("8.6", "New and emerging healthcare technologies are evaluated and safely adopted."),
-    ("8.7", "Services are designed and delivered with a user-centered approach."),
-    ("8.8", "Externally provided clinical and non-clinical services meet defined requirements."),
-    ("8.9", "Healthcare services are delivered, monitored, and managed under controlled conditions."),
-    ("8.10", "Care is people-centered, inclusive, culturally competent, and supports workforce wellbeing."),
-    ("8.11", "Healthcare is delivered ethically, respectfully, and in accordance with professional standards."),
-    ("8.12", "Patient safety systems prevent harm and support safe clinical practice across all care processes."),
-
-    # --- 9 Performance Evaluation (3) ---
-    ("9.1", "HQMS performance is monitored, measured, analyzed, and used for improvement."),
-    ("9.2", "Internal audits are planned and conducted to verify HQMS effectiveness."),
-    ("9.3", "Management reviews evaluate HQMS performance and drive improvement actions."),
-
-    # --- 10 Improvement (2) ---
-    ("10.1", "The organization continually improves the suitability and effectiveness of the HQMS."),
-    ("10.2", "Nonconformities are corrected and root causes addressed through corrective actions."),
+    ("5.2", "The healthcare quality policy is established, approved, and communicated."),
+    ("5.3", "Roles, responsibilities, and authorities for the HQMS are assigned and understood."),
+    ("5.4", "Service user focus is ensured and service user rights are respected."),
+    ("5.5", "Access to care is ensured in accordance with legal and organizational requirements."),
+    ("6.1", "Risks and opportunities affecting the HQMS are identified and managed."),
+    ("6.2", "Healthcare quality objectives are established and plans to achieve them are defined."),
+    ("6.3", "Changes to the HQMS are planned and managed systematically."),
+    ("7.1", "Resources required for the HQMS are determined and provided."),
+    ("7.2", "Personnel are competent and competence records are maintained."),
+    ("7.3", "Personnel are aware of the HQMS and their contribution to quality objectives."),
+    ("7.4", "Internal and external communication relevant to the HQMS is defined and managed."),
+    ("7.5", "Documented information is created, controlled, protected, and maintained."),
+    ("8.1", "Operational planning and control of HQMS processes are maintained."),
+    ("8.2", "Healthcare facilities, equipment, and infrastructure are safely managed."),
+    ("8.3", "Waste management and environmental responsibilities are controlled."),
+    ("8.4", "Materials are handled, stored, and managed responsibly."),
+    ("8.5", "Service user belongings are safeguarded and properly managed."),
+    ("8.6", "Emerging technologies are evaluated and adopted safely."),
+    ("8.7", "Healthcare services are designed using a service-user-centred approach."),
+    ("8.8", "Externally provided products and services conform to requirements."),
+    ("8.9", "Provision of healthcare services is controlled and effectively managed."),
+    ("8.10", "People-centred care, inclusivity, health literacy, and workforce wellbeing are ensured."),
+    ("8.11", "Healthcare services are delivered ethically and competently."),
+    ("8.12", "Patient safety systems are implemented, monitored, and improved."),
+    ("9.1", "HQMS performance is monitored, measured, analysed, and evaluated."),
+    ("9.2", "Internal audits are conducted to verify HQMS conformity and effectiveness."),
+    ("9.3", "Management reviews assess HQMS performance and drive improvement."),
+    ("10.1", "Continual improvement of the HQMS is actively pursued."),
+    ("10.2", "Nonconformities are addressed and corrective actions are implemented."),
 ]
 
 
+def split_clause(code: str):
+    major, minor = code.split(".")
+    return int(major), int(minor)
+
+
 class Command(BaseCommand):
-    help = "Seeds ISO 7101:2023 (AfyaNumeriq canonical 34-clause interpretation)"
+    help = "Seed ISO 7101 clauses for a specific organization (tenant) - idempotent."
 
-    def handle(self, *args, **kwargs):
-        with transaction.atomic():
-            ComplianceClause.objects.filter(standard=STANDARD).delete()
+    def add_arguments(self, parser):
+        parser.add_argument("--slug", required=True, help="Organization slug e.g. demo")
+        parser.add_argument("--update-existing", action="store_true")
+        parser.add_argument("--dry-run", action="store_true")
 
-            objs = [
-                ComplianceClause(
-                    standard=STANDARD,
-                    clause_number=num,
-                    description=text,
-                    short_description=text,
-                    status="NI",
-                    owner="Unassigned",
-                )
-                for num, text in ISO_7101_CLAUSES
-            ]
+    @transaction.atomic
+    def handle(self, *args, **opts):
+        Organization = apps.get_model("api", "Organization")
+        ComplianceClause = apps.get_model("api", "ComplianceClause")
 
-            ComplianceClause.objects.bulk_create(objs)
+        slug = opts["slug"].strip()
+        update_existing = opts["update_existing"]
+        dry_run = opts["dry_run"]
 
-        self.stdout.write(
-            self.style.SUCCESS(f"✅ Seeded {len(objs)} ISO 7101 clauses (canonical)")
-        )
+        org = Organization.objects.filter(slug=slug).first()
+        if not org:
+            raise CommandError(f"Organization with slug='{slug}' not found.")
+
+        created_count = 0
+        updated_count = 0
+
+        for clause_number, short_desc in ISO_7101_CLAUSES:
+            major, minor = split_clause(clause_number)
+
+            defaults = {
+                "standard": "iso-7101",
+                "clause_number": clause_number,
+                "clause_major": major,
+                "clause_minor": minor,
+                "short_description": short_desc,
+                "description": short_desc,  # keep same for MVP; can expand later
+            }
+
+            obj, created = ComplianceClause.objects.get_or_create(
+                organization=org,
+                standard="iso-7101",
+                clause_number=clause_number,
+                defaults=defaults,
+            )
+
+            if created:
+                created_count += 1
+                if dry_run:
+                    self.stdout.write(f"[DRY RUN] Would create ISO 7101 {clause_number} for '{slug}'")
+            else:
+                if update_existing:
+                    changed = False
+                    if obj.short_description != short_desc:
+                        obj.short_description = short_desc
+                        changed = True
+                    if obj.description != short_desc:
+                        obj.description = short_desc
+                        changed = True
+                    if obj.clause_major != major:
+                        obj.clause_major = major
+                        changed = True
+                    if obj.clause_minor != minor:
+                        obj.clause_minor = minor
+                        changed = True
+                    if obj.standard != "iso-7101":
+                        obj.standard = "iso-7101"
+                        changed = True
+
+                    if changed:
+                        updated_count += 1
+                        if dry_run:
+                            self.stdout.write(f"[DRY RUN] Would update ISO 7101 {clause_number} for '{slug}'")
+                        else:
+                            obj.save()
+
+        if dry_run:
+            self.stdout.write(self.style.WARNING("DRY RUN: no database writes performed."))
+
+        self.stdout.write(self.style.SUCCESS(f"✅ ISO 7101 seed complete for '{slug}'"))
+        self.stdout.write(f"Created={created_count}, Updated={updated_count}")

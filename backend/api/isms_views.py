@@ -1,7 +1,8 @@
 # backend/api/isms_views.py
-
+import re
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
@@ -10,7 +11,7 @@ from django.db.models import IntegerField
 from django.db.models.functions import Cast, Substr
 from rest_framework.permissions import IsAuthenticated
 from api.isms_audit_lock import is_iso27001_audit_locked
-from .isms_models import Clause, Control, Asset, ISORisk, SoAEntry
+from .isms_models import Clause, Control, Asset, ISORisk, SoAEntry, ISO27001ClauseRecord
 from .isms_serializers import (
     ClauseSerializer,
     ControlSerializer,
@@ -18,6 +19,8 @@ from .isms_serializers import (
     ISORiskSerializer,
     SoAEntrySerializer,
     SoAEntryUpdateSerializer,
+    ISO27001ClauseRecordSerializer,
+    ISO27001ClauseRecordPatchSerializer,
 )
 from .isms_signals import compute_soa_completeness
 from .tenant_mixins import TenantRequiredMixin
@@ -130,9 +133,13 @@ class SoAListView(generics.ListAPIView):
         tenant = getattr(self.request, "tenant", None)
         if not tenant:
             return SoAEntry.objects.none()
+
         standard = self.request.query_params.get("standard", "iso-27001")
 
-        qs = (
+        # ✅ Ensure SoA has ALL controls (idempotent)
+        self._ensure_seeded(tenant, standard)
+
+        return (
             SoAEntry.objects.filter(organization=tenant, standard=standard)
             .select_related("control")
             .annotate(
@@ -142,23 +149,23 @@ class SoAListView(generics.ListAPIView):
             .order_by("chapter", "section")
         )
 
-        if not qs.exists():
-            self._auto_seed(tenant, standard)
-            qs = (
-                SoAEntry.objects.filter(organization=tenant, standard=standard)
-                .select_related("control")
-                .annotate(
-                    chapter=Cast(Substr("control__code", 3, 1), IntegerField()),
-                    section=Cast(Substr("control__code", 5, 2), IntegerField()),
-                )
-                .order_by("chapter", "section")
-            )
-
-        return qs
-
     @transaction.atomic
-    def _auto_seed(self, tenant, standard: str):
-        controls = Control.objects.filter(standard=standard)
+    def _ensure_seeded(self, tenant, standard: str):
+        controls_qs = Control.objects.filter(standard=standard).only("id")
+
+        # Existing control IDs already present in SoA for this tenant+standard
+        existing_control_ids = set(
+            SoAEntry.objects.filter(organization=tenant, standard=standard)
+            .values_list("control_id", flat=True)
+        )
+
+        # Controls that still need a SoA entry
+        missing_controls = [
+            c for c in controls_qs if c.id not in existing_control_ids
+        ]
+
+        if not missing_controls:
+            return  # ✅ already complete
 
         # ONLY Reduce risks justify applicability; must be tenant-scoped
         used_control_ids = set(
@@ -180,11 +187,10 @@ class SoAListView(generics.ListAPIView):
                     justification="",
                     evidence_notes="",
                 )
-                for control in controls
-            ]
+                for control in missing_controls
+            ],
+            ignore_conflicts=True,  # safe if unique constraint exists (recommended)
         )
-
-
 # ---------------------------------------------------------------------
 # SoA UPDATE (PATCH) — TENANT-SCOPED QUERYSET
 # ---------------------------------------------------------------------
@@ -290,3 +296,142 @@ def iso2701_dashboard_view(request):
         "applicable_annex_controls": applicable_controls,
         "soa_completeness_pct": round(completeness, 2),
     })
+
+ISO27001_STANDARD = "iso-27001"
+
+
+def _parse_clause_code(code: str) -> tuple[int, int, str]:
+    """
+    Sort helper for clause codes like: 4.1, 4.2, ... 10.1
+    Returns (major, minor, original)
+    """
+    try:
+        parts = code.split(".")
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) > 1 else 0
+        return (major, minor, code)
+    except Exception:
+        return (999, 999, code)
+
+
+def _iso27001_clause_in_scope(code: str) -> bool:
+    """
+    ISO 27001 compliance clauses should be 4.* to 10.* (inclusive).
+    """
+    try:
+        major = int(code.split(".")[0])
+        return 4 <= major <= 10
+    except Exception:
+        return False
+
+
+class ISO27001ClauseRecordListView(generics.ListAPIView):
+    serializer_class = ISO27001ClauseRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        print(
+            "ISO27001ClauseRecordListView:",
+            "host=", self.request.get_host(),
+            "path=", self.request.path,
+            "tenant=", getattr(self.request, "tenant", None),
+        )
+
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            return ISO27001ClauseRecord.objects.none()
+
+        # Seed on first load (per tenant)
+        qs = ISO27001ClauseRecord.objects.filter(organization=tenant).select_related("clause")
+
+        if not qs.exists():
+            self._auto_seed(tenant)
+
+        return ISO27001ClauseRecord.objects.filter(organization=tenant).select_related("clause")
+
+    @transaction.atomic
+    def _auto_seed(self, tenant):
+        # Pull GLOBAL clause definitions for iso-27001, then filter 4–10
+        defs = Clause.objects.filter(standard=ISO27001_STANDARD)
+        defs = [c for c in defs if _iso27001_clause_in_scope(c.code)]
+        defs.sort(key=lambda c: _parse_clause_code(c.code))
+
+        ISO27001ClauseRecord.objects.bulk_create(
+            [
+                ISO27001ClauseRecord(
+                    organization=tenant,
+                    clause=c,
+                    status="NI",
+                    owner="Unassigned",
+                    comments="",
+                )
+                for c in defs
+            ],
+            ignore_conflicts=True,
+        )
+
+    def list(self, request, *args, **kwargs):
+        """
+        Ensure stable ordering by clause code (4.1 ... 10.x)
+        """
+        tenant = getattr(request, "tenant", None)
+        if not tenant:
+            return Response([], status=200)
+
+        records = list(
+            ISO27001ClauseRecord.objects.filter(organization=tenant)
+            .select_related("clause")
+        )
+        records.sort(key=lambda r: _parse_clause_code(r.clause.code))
+
+        ser = self.get_serializer(records, many=True, context={"request": request})
+        return Response(ser.data)
+
+
+class ISO27001ClauseRecordDetailView(generics.UpdateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ISO27001ClauseRecordPatchSerializer
+
+    def get_queryset(self):
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            return ISO27001ClauseRecord.objects.none()
+        return ISO27001ClauseRecord.objects.filter(organization=tenant).select_related("clause")
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        ser = self.get_serializer(instance, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+
+        out = ISO27001ClauseRecordSerializer(instance, context={"request": request}).data
+        return Response(out)
+
+
+class ISO27001ClauseEvidenceUploadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk: int):
+        tenant = getattr(request, "tenant", None)
+        if not tenant:
+            return Response({"detail": "Tenant missing"}, status=400)
+
+        try:
+            record = ISO27001ClauseRecord.objects.select_related("clause").get(
+                pk=pk, organization=tenant
+            )
+        except ISO27001ClauseRecord.DoesNotExist:
+            return Response({"detail": "Not found"}, status=404)
+
+        f = request.FILES.get("evidence")
+        if not f:
+            return Response({"detail": "No file uploaded (field: evidence)"}, status=400)
+
+        record.evidence = f
+        record.save(update_fields=["evidence", "updated_at"])
+
+        return Response(
+            ISO27001ClauseRecordSerializer(record, context={"request": request}).data,
+            status=200,
+        )

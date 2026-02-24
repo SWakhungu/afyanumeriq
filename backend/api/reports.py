@@ -3,7 +3,8 @@ import io
 from datetime import datetime
 
 from django.http import HttpResponse, FileResponse
-from django.utils.timezone import now
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 
 from .models import ComplianceClause, Risk, Audit, Finding
 
@@ -11,7 +12,28 @@ from .models import ComplianceClause, Risk, Audit, Finding
 STATUS_POINTS = {"NI": 1, "P": 2, "IP": 3, "MI": 4, "O": 5}
 
 
+def _get_tenant(request):
+    """
+    TenantMiddleware should attach request.tenant.
+    We fail fast if tenant missing, because exports must be tenant-scoped.
+    """
+    return getattr(request, "tenant", None)
+
+
+def _has_field(model_cls, field_name: str) -> bool:
+    try:
+        return any(f.name == field_name for f in model_cls._meta.fields)
+    except Exception:
+        return False
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def compliance_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"compliance_7101_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -28,7 +50,15 @@ def compliance_csv(request):
     ])
 
     # Order using numeric clause_major/clause_minor to ensure canonical ordering
-    for c in ComplianceClause.objects.filter(standard="iso-7101").order_by("clause_major", "clause_minor"):
+    qs = ComplianceClause.objects.filter(standard="iso-7101")
+
+    # Tenant-scope ONLY if model supports it (prevents breaking if global)
+    if _has_field(ComplianceClause, "organization"):
+        qs = qs.filter(organization=tenant)
+
+    qs = qs.order_by("clause_major", "clause_minor")
+
+    for c in qs:
         writer.writerow([
             c.clause_number,
             (c.description or "").replace("\n", " ").strip(),
@@ -42,7 +72,13 @@ def compliance_csv(request):
     return response
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def risks_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"risks_7101_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -63,7 +99,19 @@ def risks_csv(request):
         "Archived",
     ])
 
-    for r in Risk.objects.all().order_by("id"):
+    qs = Risk.objects.all()
+
+    # Tenant-scope if model supports it
+    if _has_field(Risk, "organization"):
+        qs = qs.filter(organization=tenant)
+
+    # Standard-scope only if model has standard field (older Risk model may not)
+    if _has_field(Risk, "standard"):
+        qs = qs.filter(standard="iso-7101")
+
+    qs = qs.order_by("id")
+
+    for r in qs:
         writer.writerow([
             r.risk_id or r.id,
             (r.description or "").replace("\n", " ").strip(),
@@ -82,7 +130,13 @@ def risks_csv(request):
     return response
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def audits_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"audits_7101_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -99,9 +153,16 @@ def audits_csv(request):
         "# Open Findings",
     ])
 
-    for a in Audit.objects.all().order_by("date"):
-        findings_count = Finding.objects.filter(audit=a).count()
-        open_findings_count = Finding.objects.filter(audit=a, status="Open").count()
+    qs = Audit.objects.all()
+
+    # Audit model DOES have organization per your pasted code
+    qs = qs.filter(organization=tenant, standard="iso-7101").order_by("date")
+
+    for a in qs:
+        findings_qs = Finding.objects.filter(audit=a)
+        findings_count = findings_qs.count()
+        open_findings_count = findings_qs.filter(status="Open").count()
+
         writer.writerow([
             a.audit_id,
             a.audit_name,
@@ -116,7 +177,13 @@ def audits_csv(request):
     return response
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def compliance_pdf(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
@@ -125,6 +192,11 @@ def compliance_pdf(request):
         return HttpResponse("Install reportlab", status=500)
 
     qs = ComplianceClause.objects.filter(standard="iso-7101")
+
+    # Tenant-scope ONLY if model supports it (prevents breaking if global)
+    if _has_field(ComplianceClause, "organization"):
+        qs = qs.filter(organization=tenant)
+
     total = qs.count() or 1
     earned = sum(STATUS_POINTS[c.status] for c in qs)
     percent = round((earned / (total * 5)) * 100)

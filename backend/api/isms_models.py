@@ -188,3 +188,48 @@ class SoAEntry(models.Model):
 
     def __str__(self):
         return f"{self.control.code} — applicable={self.applicable} status={self.status}"
+
+class ISO27001ClauseRecord(models.Model):
+    """
+    Tenant-scoped compliance progress for ISO/IEC 27001 Clauses (4–10).
+    Global definition lives in Clause (isms_models.Clause).
+    """
+    STATUS_CHOICES = [
+        ("NI", "Not Implemented"),
+        ("P", "Planned"),
+        ("IP", "In Progress"),
+        ("MI", "Mostly Implemented"),
+        ("O", "Optimized"),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="iso27001_clause_records"
+    )
+    clause = models.ForeignKey(
+        "api.Clause",  # global definition
+        on_delete=models.CASCADE,
+        related_name="tenant_records",
+    )
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="NI")
+    owner = models.CharField(max_length=100, default="Unassigned")
+    comments = models.TextField(blank=True, null=True)
+
+    # evidence should accept any file type
+    evidence = models.FileField(upload_to="evidence/iso27001/clauses/", blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "clause"],
+                name="uniq_iso27001_clause_record_per_tenant",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organization"]),
+            models.Index(fields=["organization", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.organization.slug} {self.clause.code} ({self.status})"

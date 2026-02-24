@@ -1,104 +1,193 @@
-# AfyaNumeriq– Developer Guide
+# AfyaNumeriq – Developer Guide
 
-Last updated: Nov 2025
+Last updated: February 2026
 
 This guide provides a quick technical overview for developers working on the AfyaNumeriq platform (Next.js 15 + Django REST + PostgreSQL).
 It focuses on how to run the system, where things live, and how to work safely.
 
-Project Structure (Monorepo)
+## Project Structure (Monorepo)
+
+```
 afyanumeriq/
-├── backend/ # Django API
-│ ├── api/ # Models, views, serializers, auth, notifications
-│ ├── config/ # Django settings + URLs
-│ ├── evidence/ # Uploaded evidence files
-│ ├── manage.py
-│ └── requirements.txt
+├── backend/                          # Django REST API
+│   ├── api/                          # Core application
+│   │   ├── models.py                 # Audit, Finding models
+│   │   ├── isms_models.py            # ISO 27001 controls, SoA, risks
+│   │   ├── tprm_models.py            # Third-party risk management
+│   │   ├── views.py                  # general views
+│   │   ├── isms_views.py             # ISO 27001 views
+│   │   ├── tprm_views.py             # TPRM views
+│   │   ├── serializers.py            # General serializers
+│   │   ├── isms_serializers.py       # ISO 27001 serializers
+│   │   ├── tprm_serializers.py       # TPRM serializers
+│   │   ├── auth_views.py             # Authentication
+│   │   ├── isms_audit_lock.py        # Audit state locking logic
+│   │   ├── middleware.py             # Tenant routing middleware
+│   │   ├── tenancy.py                # Multi-tenant utilities
+│   │   ├── management/commands/      # Django management commands
+│   │   ├── migrations/               # Database schema
+│   │   └── tests/                    # Test suite
+│   ├── config/                       # Django settings + URLs
+│   ├── evidence/                     # Uploaded evidence files
+│   ├── media/                        # User-uploaded media
+│   ├── manage.py
+│   └── requirements.txt
 │
-├── frontend/ # Next.js 15 App Router frontend
-│ ├── src/
-│ ├── public/
-│ └── package.json
+├── frontend/                         # Next.js 15 App Router frontend
+│   ├── src/
+│   ├── public/
+│   └── package.json
 │
 └── README.md
-All custom Django management commands (seeders, role creators, etc.) live under:
-backend/api/management/commands/
+```
 
-Running the Platform (Local)
-Backend — Django API
+**Custom Django management commands** live under:
+`backend/api/management/commands/`
+
+## Running the Platform (Local)
+
+### Backend — Django API
+
+```bash
 cd backend
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
+```
 
-Runs at:
-http://127.0.0.1:8000
+Runs at: `http://127.0.0.1:8000`
 
-Frontend — Next.js
+### Frontend — Next.js
+
+```bash
 cd frontend
 npm install
 npm run dev
+```
 
-Runs at:
-http://127.0.0.1:3000
+Runs at: `http://127.0.0.1:3000`
 
-Authentication (MVP Status)
+## Core Features
+
+### ISO 27001 Compliance Management
+
+- **Statement of Applicability (SoA)**: Track applicability and implementation status of ISO 27001 controls
+- **ISO 27001 Annex A Controls**: Comprehensive control library with justification and evidence tracking
+- **Risk Management**: Link risks to ISO 27001 controls with treatment and acceptance
+- **Audit Lifecycle**: Create, schedule, and track audits with findings
+- **Audit Locking**: ISMS becomes read-only during "In Progress" audits to prevent modifications
+
+### Third-Party Risk Management (TPRM)
+
+- **Vendor/Third-Party Assessment**: Track third-party risks and compliance assessments
+- **TPRM Decisions**: Document approval/rejection decisions with business justification
+- **Risk Register**: Maintain a register of third-party risks
+
+### Multi-Tenant Architecture
+
+- Organization-scoped data isolation
+- Tenant middleware for automatic request routing
+- All models respect organization boundaries
+
+### Asset Management
+
+- Classify and track IS(Information Security) assets
+- Link assets to risks and controls
+- Track asset ownership (legal and technical)
+
+## Authentication
 
 Auth uses JWT access tokens (in memory) + refresh token stored in HttpOnly cookie.
 
-Login endpoint:
+**Login endpoint:**
+
+```
 POST /api/auth/login/
-Refresh endpoint:
+```
+
+**Refresh endpoint:**
+
+```
 POST /api/auth/refresh/
-Profile endpoint:
+```
+
+**Profile endpoint:**
+
+```
 GET /api/auth/me/
-Frontend keeps auth state in:
-src/store/authStore.ts
+```
+
+**Change password:**
+
+```
+POST /api/auth/change-password/
+```
+
+Frontend keeps auth state in: `src/store/authStore.ts`
+
 Logout clears local state + cookie.
 
-Seeding Critical Data
-ISO 7101 Clauses (34 in number; core to the system)
+## Seeding Critical Data
+
+### ISO Standards Library
+
+**ISO 27001 Clauses** (114 clauses)
+
+```bash
+python manage.py seed_iso27001_clauses_global
+```
+
+**ISO 7101 Clauses** (34 clauses)
+
+```bash
 python manage.py seed_iso7101
-Located at:
-backend/api/management/commands/seed_iso7101.py
+```
 
-Other seeders available:
-create_roles.py
-create_user_profiles.py
-seed_clauses.py
-fix_short_descriptions.py
+**ISO 42001 Support**
+Database structure supports ISO 42001, additional seeder can be added as needed.
 
-Fake Demo Data (Important)
-The platform currently loads demo data:
+### Utility Management Commands
 
-Fake notifications
+```bash
+python manage.py create_roles              # Create default organization roles
+python manage.py create_user_profiles      # Create user profile records
+python manage.py seed_demo                 # Load demo data (for development)
+python manage.py fix_short_descriptions    # Fix control descriptions
+python manage.py import_27001              # Import ISO 27001 data
+```
 
-Example organizations
+### Demo Data Handling
 
-Example risks, audits, and compliance clauses
+The platform currently loads demo data for development:
 
-Example users (via seeders)
+- Fake notifications
+- Example organizations
+- Example risks, audits, and compliance records
+- Example users (via seeders)
 
-Before Production Release:
+**Before Production Release:**
 
 You must:
 
-Drop or sanitize fake records.
+1. Drop or sanitize fake records
+2. Rerun only the ISO standards seed commands
+3. Create a real admin user manually
+4. Upload no dummy evidence files
 
-Rerun only the ISO 7101 seed command.
+## Environment Variables
 
-Create a real admin user manually.
+### Backend (backend/config/settings.py)
 
-Upload no dummy evidence files.
+- `DEBUG`: Set to `False` for production
+- `SECRET_KEY`: Django secret key
+- Database credentials (if using external PostgreSQL)
 
-A cleanup script can be added later if needed.
+### Frontend (frontend/.env.local)
 
-Environment Variables
-Backend (backend/config/settings.py)
-Backend (backend/config/settings.py)
-
-Frontend (frontend/.env.local)
+```
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api
+```
 
 Key API Endpoints (Quick View)
 /api/auth/login/ POST

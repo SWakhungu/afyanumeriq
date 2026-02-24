@@ -4,6 +4,8 @@ from datetime import datetime
 from django.http import HttpResponse
 from django.db.models import IntegerField
 from django.db.models.functions import Cast, Substr
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 
 from .models import Audit, Finding
 from .isms_models import SoAEntry, ISORisk, Asset
@@ -27,15 +29,44 @@ def order_controls(qs):
     ).order_by("chapter", "section")
 
 
+def _get_tenant(request):
+    return getattr(request, "tenant", None)
+
+
+def _has_field(model_cls, field_name: str) -> bool:
+    try:
+        return any(f.name == field_name for f in model_cls._meta.fields)
+    except Exception:
+        return False
+
+
 # ------------------------------------------------
 # Compliance (ISO 27001)
 # ------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def iso27001_compliance_csv(request):
+    from .isms_models import ISO27001ClauseRecord
+    
+    def parse_clause_code(code: str):
+        """Sort helper for codes like 4.1, 10.2"""
+        try:
+            parts = code.split(".")
+            major = int(parts[0])
+            minor = int(parts[1]) if len(parts) > 1 else 0
+            return (major, minor)
+        except Exception:
+            return (999, 999)
+    
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"compliance_iso27001_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-    writer = csv.writer(response)
+    writer = csv.writer(response, quoting=csv.QUOTE_ALL)
     writer.writerow([
         "Clause",
         "Description",
@@ -44,20 +75,33 @@ def iso27001_compliance_csv(request):
         "Comments",
         "Last Updated",
         "Has Evidence",
+        "Evidence Path",
     ])
 
-    # Use numeric clause ordering fields to avoid substr/cast DB issues
-    qs = ComplianceClause.objects.filter(standard="iso-27001").order_by("clause_major", "clause_minor")
+    # Query ISO27001ClauseRecord (tenant-scoped)
+    records = ISO27001ClauseRecord.objects.filter(organization=tenant).select_related("clause")
+    
+    # Sort in Python using proper clause code parsing
+    records = sorted(records, key=lambda r: parse_clause_code(r.clause.code))
 
-    for c in qs:
+    for record in records:
+        clause = record.clause
+        evidence_path = ""
+        if record.evidence:
+            try:
+                evidence_path = record.evidence.url
+            except Exception:
+                evidence_path = str(record.evidence)
+        
         writer.writerow([
-            c.clause_number,
-            (c.description or "").replace("\n", " ").strip(),
-            c.status,
-            c.owner,
-            (c.comments or "").replace("\n", " ").strip(),
-            c.last_updated.strftime("%Y-%m-%d") if c.last_updated else "",
-            "Yes" if c.evidence else "No",
+            clause.code,
+            (clause.text or "").replace("\n", " ").strip(),
+            record.status,
+            record.owner,
+            (record.comments or "").replace("\n", " ").strip(),
+            record.updated_at.strftime("%Y-%m-%d") if record.updated_at else "",
+            "Yes" if record.evidence else "No",
+            evidence_path,
         ])
 
     return response
@@ -66,7 +110,13 @@ def iso27001_compliance_csv(request):
 # ------------------------------------------------
 # Statement of Applicability
 # ------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def soa_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"soa_iso27001_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -85,21 +135,23 @@ def soa_csv(request):
 
     qs = order_controls(
         SoAEntry.objects
-        .filter(standard="iso-27001")
+        .filter(standard="iso-27001", organization=tenant)
         .select_related("control")
     )
 
     for e in qs:
         risks = ISORisk.objects.filter(
+            organization=tenant,
             standard="iso-27001",
             controls=e.control,
         ).distinct()
 
-        assets = Asset.objects.filter(    
+        assets = Asset.objects.filter(
+            organization=tenant,
             risks__in=risks,
             standard="iso-27001",
         ).distinct()
-        
+
         writer.writerow([
             e.control.code,
             e.control.title,
@@ -117,7 +169,13 @@ def soa_csv(request):
 # ------------------------------------------------
 # Risk Register
 # ------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def iso27001_risks_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"risks_iso27001_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -139,8 +197,7 @@ def iso27001_risks_csv(request):
         "Asset",
     ])
 
-    for r in ISORisk.objects.filter(standard="iso-27001").select_related("asset"):
-        # controls is a M2M; list codes
+    for r in ISORisk.objects.filter(organization=tenant, standard="iso-27001").select_related("asset"):
         control_codes = ", ".join(c.code for c in r.controls.all())
 
         writer.writerow([
@@ -165,7 +222,13 @@ def iso27001_risks_csv(request):
 # ------------------------------------------------
 # Asset Register
 # ------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def assets_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"assets_iso27001_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -183,7 +246,7 @@ def assets_csv(request):
         "Notes",
     ])
 
-    for a in Asset.objects.filter(standard="iso-27001"):
+    for a in Asset.objects.filter(organization=tenant, standard="iso-27001"):
         writer.writerow([
             a.asset_id,
             a.name,
@@ -202,16 +265,23 @@ def assets_csv(request):
 # ------------------------------------------------
 # Audits (stub-safe)
 # ------------------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def iso27001_audits_csv(request):
+    tenant = _get_tenant(request)
+    if not tenant:
+        return HttpResponse("Tenant missing", status=400)
+
     filename = f"audits_iso27001_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
     writer = csv.writer(response)
-    writer.writerow(["Audit ID", "Name", "Date", "Open Findings"])
+    writer.writerow(["Audit ID", "Name", "Date", "Lead Auditor", "Participants","Open Findings"])
 
-    for a in Audit.objects.filter(standard="iso-27001"):
+    for a in Audit.objects.filter(organization=tenant, standard="iso-27001"):
         open_findings = Finding.objects.filter(audit=a, status="Open").count()
-        writer.writerow([a.audit_id, a.audit_name, a.date, open_findings])
+        writer.writerow([a.audit_id, a.audit_name, a.date, (a.lead_auditor or "").strip(),
+            (a.participants or "").strip(), open_findings])
 
     return response

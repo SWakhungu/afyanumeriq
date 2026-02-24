@@ -18,14 +18,14 @@ import {
 } from "lucide-react";
 
 /**
- * Standards that live under a URL prefix:
- *   /27001/...
- *   /42001/...
+ * All standards that have their own dashboard root
+ * /7101  
+ * /27001
+ * /42001
  * etc.
- *
- * ISO 7101 is the root standard => no prefix ("/")
  */
-const PREFIX_STANDARDS = new Set(["27001", "42001", "13485", "15189", "17025"]);
+
+const PREFIX_STANDARDS = new Set(["7101", "27001", "42001", "13485", "15189", "17025"]);
 
 /**
  * Optional per-standard landing overrides per module.
@@ -77,6 +77,9 @@ function buildHref(base: string, key: NavKey) {
   // ISO 7101 is root (base="") => "/risk"
   // Other standards have base="/27001" => "/27001/risk" or "/27001/assets"
   if (!base) return path;
+  // If we are on landing page (no standard prefix in URL),
+  // keep Home on "/" but still allow other links to work.
+  if (!base) return key === "home" ? "/" : path;
 
   // Special case: home should go to the base itself ("/27001")
   if (key === "home") return base;

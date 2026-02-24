@@ -30,6 +30,7 @@ from .reports_27001 import (
 )
 
 from .notifications_views import NotificationsView
+from .platform_updates_views import PlatformUpdatesView
 from .auth_change_password import ChangePasswordView
 from .isms_views import (
     ClauseListView,
@@ -41,6 +42,9 @@ from .isms_views import (
     SoAEntryUpdateAPIView,
     soa_summary_view,
     iso2701_dashboard_view,
+    ISO27001ClauseRecordListView,
+    ISO27001ClauseRecordDetailView,
+    ISO27001ClauseEvidenceUploadView,
 )
 
 # -------------------------
@@ -85,6 +89,7 @@ urlpatterns += [
 # -------------------------
 urlpatterns += [
     path("notifications/", NotificationsView.as_view(), name="notifications"),
+    path("platform-updates/", PlatformUpdatesView.as_view(), name="platform-updates"),
 ]
 
 # -------------------------
@@ -135,4 +140,14 @@ urlpatterns += [
     path("27001/soa/entries/<int:pk>/", SoAEntryUpdateAPIView.as_view(), name="soaentry-update"),
     path("27001/soa/summary/", soa_summary_view, name="soa-summary"),
     path("27001/dashboard/overview/", iso2701_dashboard_view, name="iso27001-dashboard"),
+]
+
+urlpatterns += [
+    path("27001/clauses/", ISO27001ClauseRecordListView.as_view(), name="iso27001-clauses"),
+    path("27001/clauses/<int:pk>/", ISO27001ClauseRecordDetailView.as_view(), name="iso27001-clause-detail"),
+    path("27001/clauses/<int:pk>/evidence/", ISO27001ClauseEvidenceUploadView.as_view(), name="iso27001-clause-evidence"),
+]
+
+urlpatterns += [
+    path("tprm/", include("api.tprm_urls")),
 ]

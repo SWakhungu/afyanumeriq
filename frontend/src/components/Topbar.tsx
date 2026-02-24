@@ -30,7 +30,8 @@ export default function Topbar() {
 
   // Standards list
   const standards: Std[] = [
-    { code: "iso-7101", name: "ISO 7101", path: "/" },
+    { code: "selector", name: "Standards Selector", path: "/" },
+    { code: "iso-7101", name: "ISO 7101", path: "/7101" },
     { code: "iso-27001", name: "ISO/IEC 27001", path: "/27001" },
     { code: "iso-42001", name: "ISO/IEC 42001", path: "/42001" },
     { code: "iso-13485", name: "ISO 13485", path: "/13485" },
@@ -39,14 +40,18 @@ export default function Topbar() {
   ];
 
   // ✅ Active standard derived from current URL
+  // Rule: choose the longest matching prefix among real standards (not "/")
   const activeStandard = useMemo(() => {
     const p = pathname || "/";
-    const match = standards
-      .filter((s) => (s.path === "/" ? true : p.startsWith(s.path)))
-      .sort((a, b) => b.path.length - a.path.length)[0];
-    return match || standards[0];
-  }, [pathname]);
 
+    const realStandards = standards.filter((s) => s.path !== "/");
+
+    const match = realStandards
+      .filter((s) => p === s.path || p.startsWith(`${s.path}/`) || p.startsWith(s.path))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+
+    return match || standards[0]; // fallback: "Standards Selector"
+  }, [pathname]);
   // click-outside close
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -65,15 +70,17 @@ export default function Topbar() {
   }, []);
 
   // ✅ Notification count is scoped by active standard
-  const refreshNotifCount = async () => {
+    const refreshNotifCount = async () => {
     try {
-      const resp = await apiFetch(`/notifications/?standard=${activeStandard.code}`);
+      const std = activeStandard.code === "selector" ? "iso-7101" : activeStandard.code;
+      const resp = await apiFetch(`/notifications/?standard=${std}`);
       const arr = Array.isArray(resp) ? resp : resp.notifications || [];
       setNotifCount(arr.length);
     } catch {
       setNotifCount(null);
     }
   };
+
 
   useEffect(() => {
     refreshNotifCount();

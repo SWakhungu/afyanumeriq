@@ -2,23 +2,8 @@
 
 from rest_framework import serializers
 
-from .isms_models import Clause, Control, Asset, ISORisk, SoAEntry
+from .isms_models import Clause, Control, Asset, ISORisk, SoAEntry, ISO27001ClauseRecord
 from .isms_signals import aggregate_risk_coverage_for_risk
-from .models import Audit
-
-
-# ============================================================
-# ISO 27001 AUDIT LOCK (SINGLE SOURCE OF TRUTH)
-# ============================================================
-def is_iso27001_audit_locked():
-    """
-    Returns True if there is any ISO/IEC 27001 audit
-    in progress or completed (i.e. ISMS state must be frozen).
-    """
-    return Audit.objects.filter(
-        standard="iso-27001",
-        status__in=["In Progress", "Completed"],
-    ).exists()
 
 
 # ---------------------------------------------------------------------
@@ -117,11 +102,9 @@ class ISORiskSerializer(serializers.ModelSerializer):
     # VALIDATION (ISO governance)
     # -----------------------------
     def validate(self, attrs):
-        # 🔒 HARD LOCK during ISO 27001 audit
-        if is_iso27001_audit_locked():
-            raise serializers.ValidationError(
-                "ISMS is under audit. Risks cannot be modified."
-            )
+        # Note: No audit lock here - risks can be created/modified during audits
+        # because audits are when we discover/document risks.
+        # Only SoA and controls should be locked during audits.
 
         treatment = attrs.get("treatment", getattr(self.instance, "treatment", None))
         justification = attrs.get(
@@ -255,12 +238,6 @@ class SoAEntryUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        # 🔒 HARD LOCK during ISO 27001 audit
-        if is_iso27001_audit_locked():
-            raise serializers.ValidationError(
-                "ISMS is under audit. Statement of Applicability cannot be modified."
-            )
-
         justification = attrs.get(
             "justification",
             self.instance.justification
@@ -275,3 +252,39 @@ class SoAEntryUpdateSerializer(serializers.ModelSerializer):
             })
 
         return attrs
+
+
+class ISO27001ClauseRecordSerializer(serializers.ModelSerializer):
+    clause_number = serializers.CharField(source="clause.code", read_only=True)
+    short_description = serializers.CharField(source="clause.title", read_only=True)
+    description = serializers.CharField(source="clause.text", read_only=True)
+
+    evidence = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ISO27001ClauseRecord
+        fields = [
+            "id",
+            "clause_number",
+            "short_description",
+            "description",
+            "status",
+            "owner",
+            "comments",
+            "evidence",
+            "updated_at",
+        ]
+
+    def get_evidence(self, obj):
+        request = self.context.get("request")
+        if not obj.evidence:
+            return None
+        if request:
+            return request.build_absolute_uri(obj.evidence.url)
+        return obj.evidence.url
+
+
+class ISO27001ClauseRecordPatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ISO27001ClauseRecord
+        fields = ["status", "owner", "comments"]
