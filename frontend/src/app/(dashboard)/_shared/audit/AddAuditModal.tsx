@@ -10,9 +10,10 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  standard?: string;
 };
 
-export default function AddAuditModal({ open, onClose, onCreated }: Props) {
+export default function AddAuditModal({ open, onClose, onCreated, standard }: Props) {
   const { show } = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -36,6 +37,7 @@ export default function AddAuditModal({ open, onClose, onCreated }: Props) {
       const payload = {
         ...form,
         status: "Scheduled", // fixed value for all new audits
+        standard: standard || "iso-7101", // default to iso-7101 if not provided
       };
 
       await apiFetch("/audits/", {

@@ -1,7 +1,17 @@
 # api/serializers.py
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Risk, ComplianceClause, Audit, Finding, Organization, UserProfile
+from .isms_models import Clause, Control
+from .isms_serializers import ClauseSerializer, ControlSerializer
+from django.db import transaction, IntegrityError
+from .models import (
+    Risk,
+    ComplianceClause,
+    Audit,
+    Finding,
+    Organization,
+    UserProfile,
+)
 
 
 # ---------------------------------------------------------
@@ -94,7 +104,7 @@ class RiskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Risk
         fields = "__all__"
-        read_only_fields = ("risk_score", "risk_level")
+        read_only_fields = ("risk_score", "risk_level", "organization")
 
     def _level_from_score(self, score: float) -> str:
         if score <= 5:
@@ -138,6 +148,22 @@ class ComplianceClauseSerializer(serializers.ModelSerializer):
 
 
 class FindingSerializer(serializers.ModelSerializer):
+    clause = ClauseSerializer(read_only=True)
+    clause_id = serializers.PrimaryKeyRelatedField(
+        source="clause",
+        queryset=Clause.objects.all(),
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    controls = ControlSerializer(many=True, read_only=True)
+    control_ids = serializers.PrimaryKeyRelatedField(
+        source="controls",
+        queryset=Control.objects.all(),
+        many=True,
+        write_only=True,
+        required=False,
+    )    
     class Meta:
         model = Finding
         fields = "__all__"
@@ -146,11 +172,65 @@ class FindingSerializer(serializers.ModelSerializer):
 class AuditSerializer(serializers.ModelSerializer):
     findings = FindingSerializer(many=True, read_only=True)
 
+    # ✅ Prevent frontend from being forced to send organization
+    organization = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Audit
         fields = "__all__"
+        read_only_fields = ("organization",)
 
+    # --------------------------------------------------
+    # VALIDATION (STANDARD-AWARE, ISO-GOVERNED)
+    # --------------------------------------------------
+    def validate(self, attrs):
+        standard = attrs.get("standard", getattr(self.instance, "standard", None))
+        if not standard:
+            raise serializers.ValidationError({
+                "standard": "Audit standard must be specified explicitly."
+            })
 
+        if standard == "iso-27001":
+            scope = attrs.get("scope", getattr(self.instance, "scope", None))
+            if not scope or not scope.strip():
+                raise serializers.ValidationError({
+                    "scope": "ISMS audit scope is required for ISO/IEC 27001 audits."
+                })
+        return attrs
+
+    # --------------------------------------------------
+    # CREATE (ENFORCE STANDARD + TENANT)
+    # --------------------------------------------------
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if not request:
+            raise serializers.ValidationError({"detail": "Request context missing."})
+
+        # ✅ Tenant (Organization) comes from middleware
+        tenant = getattr(request, "tenant", None)
+        if not tenant:
+            raise serializers.ValidationError({
+                "organization": "Tenant missing on request. Ensure TenantMiddleware is enabled."
+            })
+
+        # 🔒 Enforce explicit standard on creation
+        standard = request.data.get("standard")
+        if not standard:
+            raise serializers.ValidationError({
+                "standard": "Audit standard must be explicitly provided at creation."
+            })
+
+        validated_data["standard"] = standard
+        validated_data["organization"] = tenant  # ✅ key fix
+        return super().create(validated_data)
+
+    # --------------------------------------------------
+    # UPDATE (PREVENT CROSS-STANDARD BLEED)
+    # --------------------------------------------------
+    def update(self, instance, validated_data):
+        validated_data.pop("standard", None)
+        validated_data.pop("organization", None)  # ✅ also immutable
+        return super().update(instance, validated_data)
 # ---------------------------------------------------------
 # CREATE USER
 # ---------------------------------------------------------
@@ -162,20 +242,33 @@ class CreateUserSerializer(serializers.Serializer):
     department = serializers.CharField(required=False, allow_blank=True)
 
     def validate_username(self, value):
+        value = value.strip()
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already exists")
         return value
 
     def create(self, validated_data):
-        dept = validated_data.pop("department", "")
+        tenant = self.context.get("tenant")
+        if not tenant:
+            raise serializers.ValidationError({"detail": "Tenant not provided (serializer context missing)."})
+
+        dept = (validated_data.pop("department", "") or "").strip()
         role = validated_data.pop("role")
+        validated_data["username"] = validated_data["username"].strip()
 
-        user = User.objects.create_user(**validated_data)
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(**validated_data)
 
-        UserProfile.objects.create(
-            user=user,
-            role=role,
-            department=dept or "",
-        )
+                UserProfile.objects.create(
+                    user=user,
+                    organization=tenant,   # ✅ REQUIRED
+                    role=role,
+                    department=dept,
+                )
 
-        return user
+                return user
+
+        except IntegrityError as e:
+            # Turns DB explosions into a clean 400 with a helpful message
+            raise serializers.ValidationError({"detail": f"Could not create user (DB constraint): {str(e)}"})

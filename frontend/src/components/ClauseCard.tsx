@@ -1,6 +1,7 @@
+// src/components/ClauseCard.tsx
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,13 +20,19 @@ import {
 type Clause = {
   id: number;
   clause_number: string;
-  description: string;
-  short_description: string;
+  description?: string;
+  short_description?: string;
   status: Status;
   evidence?: string | string[] | null;
-  owner: string;
+  owner?: string | null;
   comments?: string | null;
   last_updated?: string;
+};
+
+type Props = {
+  clause: Clause;
+  standard?: string; // e.g. "iso-27001"
+  onChange?: (updated: Clause) => void;
 };
 
 // Normalize backend evidence shape: string | string[] | null → string[]
@@ -35,23 +42,44 @@ function normalizeEvidence(evidence?: string | string[] | null): string[] {
   return [evidence];
 }
 
-type Props = {
-  clause: Clause;
-  onChange?: (updated: Clause) => void;
-};
+function clauseDetailPath(standard: string | undefined, id: number) {
+  if (standard === "iso-27001") return `/27001/clauses/${id}/`;
+  return `/compliance/${id}/`;
+}
 
-export default function ClauseCard({ clause, onChange }: Props) {
+function clauseEvidencePath(standard: string | undefined, id: number) {
+  if (standard === "iso-27001") return `/27001/clauses/${id}/evidence/`;
+  return `/compliance/${id}/evidence/`;
+}
+
+export default function ClauseCard({ clause, standard, onChange }: Props) {
   const { show } = useToast();
+
   const [saving, setSaving] = useState(false);
+
+  // status
   const [localStatus, setLocalStatus] = useState<Status>(clause.status);
+
+  // owner inline edit
   const [editingOwner, setEditingOwner] = useState(false);
   const [localOwner, setLocalOwner] = useState(clause.owner || "");
 
+  // comments inline edit
+  const [editingComments, setEditingComments] = useState(false);
+  const [localComments, setLocalComments] = useState(clause.comments || "");
+
   const evidenceList = useMemo(
     () => normalizeEvidence(clause.evidence),
-    [clause.evidence]
+    [clause.evidence],
   );
   const hasEvidence = evidenceList.length > 0;
+
+  async function patchClause(payload: Partial<Clause>) {
+    return apiFetch(clauseDetailPath(standard, clause.id), {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  }
 
   async function handleStatusChange(next: Status) {
     const prev = localStatus;
@@ -76,21 +104,67 @@ export default function ClauseCard({ clause, onChange }: Props) {
       setSaving(true);
       setLocalStatus(next);
 
-      await apiFetch(`/compliance/${clause.id}/`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: next }),
-      });
+      const updated = await patchClause({ status: next });
 
       show(
         `Clause ${clause.clause_number} set to ${STATUS_LABELS[next]}`,
-        "success"
+        "success",
       );
-      onChange?.({ ...clause, status: next });
+
+      onChange?.({
+        ...clause,
+        ...updated,
+        status: next,
+      });
     } catch (e: any) {
       setLocalStatus(prev);
       show(
         `Failed to update status: ${e?.message || "Unknown error"}`,
-        "error"
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveOwner() {
+    const nextOwner = (localOwner || "").trim() || "Unassigned";
+
+    try {
+      setSaving(true);
+      const updated = await patchClause({ owner: nextOwner });
+      show("Owner updated ✅", "success");
+      setEditingOwner(false);
+      onChange?.({
+        ...clause,
+        ...updated,
+        owner: updated?.owner ?? nextOwner,
+      });
+    } catch (err: any) {
+      show(
+        `Failed to update owner: ${err?.message || "Unknown error"}`,
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveComments() {
+    try {
+      setSaving(true);
+      const updated = await patchClause({ comments: localComments || "" });
+      show("Comments updated ✅", "success");
+      setEditingComments(false);
+      onChange?.({
+        ...clause,
+        ...updated,
+        comments: updated?.comments ?? localComments,
+      });
+    } catch (err: any) {
+      show(
+        `Failed to update comments: ${err?.message || "Unknown error"}`,
+        "error",
       );
     } finally {
       setSaving(false);
@@ -107,17 +181,40 @@ export default function ClauseCard({ clause, onChange }: Props) {
         </Badge>
       </div>
 
-      {/* Requirement text */}
-      <p className="font-semibold">{clause.short_description}</p>
+      {/* Requirement text: prefer full description if present */}
+      <p className="font-semibold">
+        {clause.description || clause.short_description || ""}
+      </p>
 
       {/* Owner & Comments */}
       <div className="text-sm space-y-1">
-        <div>
-          <span className="font-medium">Owner:</span>{" "}
+        <div className="flex items-center gap-2">
+          <span className="font-medium">Owner:</span>
+
           {!editingOwner ? (
-            <span className={clause.owner === "Unassigned" ? "opacity-50" : ""}>
-              {clause.owner}
-            </span>
+            <>
+              <span
+                className={
+                  !clause.owner || clause.owner === "Unassigned"
+                    ? "opacity-50"
+                    : ""
+                }
+              >
+                {clause.owner || "Unassigned"}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalOwner(clause.owner || "");
+                  setEditingOwner(true);
+                }}
+                className="ml-2 text-xs text-gray-500 hover:text-gray-700"
+                disabled={saving}
+              >
+                Edit
+              </button>
+            </>
           ) : (
             <span className="flex items-center gap-2">
               <input
@@ -125,73 +222,96 @@ export default function ClauseCard({ clause, onChange }: Props) {
                 value={localOwner}
                 onChange={(e) => setLocalOwner(e.target.value)}
                 className="px-2 py-1 border rounded"
+                disabled={saving}
               />
               <button
-                onClick={async () => {
-                  try {
-                    setSaving(true);
-                    const updated = await apiFetch(
-                      `/compliance/${clause.id}/`,
-                      {
-                        method: "PATCH",
-                        body: JSON.stringify({ owner: localOwner }),
-                      }
-                    );
-                    show("Owner updated ✅", "success");
-                    setEditingOwner(false);
-                    onChange?.({ ...clause, owner: updated.owner });
-                  } catch (err: any) {
-                    show(
-                      `Failed to update owner: ${
-                        err?.message || "Unknown error"
-                      }`,
-                      "error"
-                    );
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
+                type="button"
+                onClick={saveOwner}
                 className="px-2 py-1 bg-teal-600 text-white rounded text-sm"
+                disabled={saving}
               >
                 Save
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setLocalOwner(clause.owner || "");
                   setEditingOwner(false);
                 }}
                 className="px-2 py-1 border rounded text-sm"
+                disabled={saving}
               >
                 Cancel
               </button>
             </span>
           )}
-          <button
-            onClick={() => setEditingOwner(!editingOwner)}
-            className="ml-3 text-xs text-gray-500 hover:text-gray-700"
-          >
-            {editingOwner ? "Edit" : "Edit"}
-          </button>
         </div>
-        {clause.comments && (
-          <div>
-            <span className="font-medium">Comments:</span>{" "}
-            <span className="italic">{clause.comments}</span>
+
+        <div>
+          <div className="flex items-start justify-between">
+            <span className="font-medium">Comments:</span>
+            {!editingComments && (
+              <button
+                type="button"
+                onClick={() => setEditingComments(true)}
+                className="ml-2 text-xs text-gray-500 hover:text-gray-700"
+                disabled={saving}
+              >
+                Edit
+              </button>
+            )}
           </div>
-        )}
+          {!editingComments ? (
+            <span className={`italic ${!clause.comments ? "opacity-50" : ""}`}>
+              {clause.comments || "No comments"}
+            </span>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <textarea
+                value={localComments}
+                onChange={(e) => setLocalComments(e.target.value)}
+                className="w-full px-2 py-1 border rounded text-sm"
+                rows={3}
+                placeholder="Add optional comments..."
+                disabled={saving}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={saveComments}
+                  className="px-2 py-1 bg-teal-600 text-white rounded text-sm"
+                  disabled={saving}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocalComments(clause.comments || "");
+                    setEditingComments(false);
+                  }}
+                  className="px-2 py-1 border rounded text-sm"
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Evidence */}
       <div className="text-sm">
-        <div className="flex items-start justify-between">
-          <div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
             <span className="font-medium">Evidence:</span>{" "}
             {evidenceList.length === 0 ? (
               <span className="opacity-60">—</span>
             ) : (
               <ul className="list-disc ml-5">
                 {evidenceList.map((ev, i) => (
-                  <li key={i}>
+                  <li key={i} className="break-all">
                     <a
                       href={ev}
                       className="underline"
@@ -206,12 +326,12 @@ export default function ClauseCard({ clause, onChange }: Props) {
             )}
           </div>
 
-          {/* Upload button only shown in IP stage */}
+          {/* Upload shown in IP stage */}
           {localStatus === "IP" && !saving && (
             <div className="shrink-0">
               <input
                 type="file"
-                id={`evidence-${clause.id}`}
+                id={`evidence-${standard || "std"}-${clause.id}`}
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
@@ -219,26 +339,35 @@ export default function ClauseCard({ clause, onChange }: Props) {
 
                   try {
                     setSaving(true);
+
                     const formData = new FormData();
                     formData.append("evidence", file);
 
                     const updated = await apiUpload(
-                      `/compliance/${clause.id}/evidence/`,
-                      formData
+                      clauseEvidencePath(standard, clause.id),
+                      formData,
                     );
 
                     show("Evidence uploaded successfully ✅", "success");
 
+                    // Backend might return evidence, evidence_url, or evidence_urls — be tolerant
+                    const nextEvidence =
+                      updated?.evidence ??
+                      updated?.evidence_url ??
+                      updated?.evidence_urls ??
+                      clause.evidence;
+
                     onChange?.({
                       ...clause,
-                      evidence: updated.evidence_url,
+                      ...updated,
+                      evidence: nextEvidence,
                     });
                   } catch (err: any) {
                     show(
                       `Failed to upload evidence: ${
                         err?.message || "Unknown error"
                       }`,
-                      "error"
+                      "error",
                     );
                   } finally {
                     setSaving(false);
@@ -250,7 +379,11 @@ export default function ClauseCard({ clause, onChange }: Props) {
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  document.getElementById(`evidence-${clause.id}`)?.click()
+                  document
+                    .getElementById(
+                      `evidence-${standard || "std"}-${clause.id}`,
+                    )
+                    ?.click()
                 }
               >
                 Upload Evidence
@@ -277,10 +410,7 @@ export default function ClauseCard({ clause, onChange }: Props) {
               (s === "MI" || s === "O") &&
               !hasEvidence;
 
-            const disabled =
-              s === localStatus ||
-              (!oneStep && s !== localStatus) ||
-              needsEvidence;
+            const disabled = s === localStatus || !oneStep || needsEvidence;
 
             return (
               <option key={s} value={s} disabled={disabled}>

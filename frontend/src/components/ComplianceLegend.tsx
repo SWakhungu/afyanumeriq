@@ -21,7 +21,7 @@ export default function ComplianceLegend({ className }: Props) {
         onClick={() => setOpen((o) => !o)}
         className="text-sm underline text-gray-600 hover:text-black"
       >
-        {open ? "Hide legend" : "Show legend"}
+        {open ? "Hide status legend" : "Show status legend"}
       </button>
 
       {open && (

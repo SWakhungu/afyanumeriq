@@ -19,13 +19,15 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = get_random_secret_key()
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]  # Local development
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", ".localhost"]
+
 
 # --------------------------------------------------------
 # APPLICATIONS
 # --------------------------------------------------------
 
 INSTALLED_APPS = [
+    "corsheaders",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -36,7 +38,6 @@ INSTALLED_APPS = [
 
     # Third-party
     "rest_framework",
-    "corsheaders",
     "rest_framework_simplejwt.token_blacklist",
 
     # Local apps
@@ -48,9 +49,10 @@ INSTALLED_APPS = [
 # --------------------------------------------------------
 
 MIDDLEWARE = [
-    "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "api.middleware.TenantMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -121,6 +123,13 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 
+# --------------------------------------------------------
+# MEDIA FILES (USER UPLOADS)
+# --------------------------------------------------------
+
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --------------------------------------------------------
@@ -159,12 +168,29 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Allowed frontend origins
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    "http://demo.demo.localhost:3000",
+    "http://orga.demo.localhost:3000",
+    "http://orgb.demo.localhost:3000",
 ]
 
-# This is CRITICAL for HttpOnly cookies
-CORS_EXPOSE_HEADERS = ["Set-Cookie"]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://demo.demo.localhost:3000",
+    "http://orga.demo.localhost:3000",
+    "http://orgb.demo.localhost:3000",
+]
+
+
+
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    ".localhost",
+]
+
+CORS_ALLOWED_ORIGINS += ["http://localhost:3000"]
+CSRF_TRUSTED_ORIGINS += ["http://localhost:3000"]
+
 
 CORS_ALLOW_HEADERS = [
     "accept",
@@ -192,8 +218,8 @@ CORS_ALLOW_METHODS = [
 # CSRF + SESSION COOKIES
 # --------------------------------------------------------
 
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False # dev ony
+CSRF_COOKIE_SECURE = False # dev only
 
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"

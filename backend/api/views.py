@@ -1,7 +1,7 @@
 from datetime import date
-from django.db.models import Count, IntegerField, Value, F
-from django.db.models.functions import Cast, Substr, StrIndex
-from rest_framework import viewsets, status
+
+from django.db.models import Count
+from rest_framework import viewsets, status, permissions as REST_permissions
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 
@@ -15,20 +15,25 @@ from .serializers import (
 
 
 # =========================================================
-#   RISK VIEWSET (with archive + filters + sorting)
+#   RISK VIEWSET
 # =========================================================
 class RiskViewSet(viewsets.ModelViewSet):
-    queryset = Risk.objects.all()
     serializer_class = RiskSerializer
+    permission_classes = [
+        REST_permissions.IsAuthenticated
+    ]
 
     def get_queryset(self):
-        qs = Risk.objects.all()
+        # Enforce tenant scoping
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            return Risk.objects.none()
 
-        # Filters
+        qs = Risk.objects.filter(organization=tenant, archived=False)
+
         status_filter = self.request.query_params.get("status")
         level_filter = self.request.query_params.get("risk_level")
         owner_filter = self.request.query_params.get("owner")
-        archived = self.request.query_params.get("archived")
 
         if status_filter:
             qs = qs.filter(status=status_filter)
@@ -37,12 +42,6 @@ class RiskViewSet(viewsets.ModelViewSet):
         if owner_filter:
             qs = qs.filter(owner=owner_filter)
 
-        if archived == "true":
-            qs = qs.filter(archived=True)
-        else:
-            qs = qs.filter(archived=False)
-
-        # Sorting
         sort = self.request.query_params.get("sort")
         if sort == "score_desc":
             qs = qs.order_by("-risk_score")
@@ -51,8 +50,14 @@ class RiskViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def perform_create(self, serializer):
+        """Set organization on create"""
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            raise ValueError("Tenant missing on request. Ensure TenantMiddleware is enabled.")
+        serializer.save(organization=tenant)
+
     def destroy(self, request, *args, **kwargs):
-        """Soft delete → archive instead of delete."""
         instance = self.get_object()
         instance.archived = True
         instance.save()
@@ -60,11 +65,39 @@ class RiskViewSet(viewsets.ModelViewSet):
 
 
 # =========================================================
-#   AUDIT VIEWSET (block completion if open findings exist)
+#   AUDIT VIEWSET
 # =========================================================
 class AuditViewSet(viewsets.ModelViewSet):
-    queryset = Audit.objects.all()
     serializer_class = AuditSerializer
+
+    def get_queryset(self):
+        """
+        Tenant + standard are hard boundaries.
+        List must be scoped by standard.
+        """
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            return Audit.objects.none()
+
+        standard = self.request.query_params.get("standard")
+        qs = Audit.objects.filter(organization=tenant)
+
+        # For LIST: require standard
+        if self.action == "list":
+            if not standard:
+                return Audit.objects.none()
+            qs = qs.filter(standard=standard)
+
+        return qs.order_by("-date", "-id")
+
+    def perform_create(self, serializer):
+        """
+        Always set tenant/org on create. Frontend must not send organization.
+        """
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            raise ValueError("Tenant missing on request. Ensure TenantMiddleware is enabled.")
+        serializer.save(organization=tenant)
 
     @action(detail=True, methods=["patch"])
     def update_status(self, request, pk=None):
@@ -78,16 +111,43 @@ class AuditViewSet(viewsets.ModelViewSet):
             )
 
         audit.status = new_status
-        audit.save()
-        return Response({"status": "updated"})
-
-
+        audit.save(update_fields=["status"])
+        return Response({"status": "updated"})    
 # =========================================================
-#   FINDINGS VIEWSET (PATCH support + auto completion_date)
+#   FINDINGS VIEWSET
 # =========================================================
 class FindingViewSet(viewsets.ModelViewSet):
-    queryset = Finding.objects.all()
     serializer_class = FindingSerializer
+
+    def get_queryset(self):
+        """
+        Tenant boundary is always enforced via audit.organization.
+        Standard boundary is enforced for LIST (and optional for detail).
+        """
+        tenant = getattr(self.request, "tenant", None)
+        if not tenant:
+            return Finding.objects.none()
+
+        qs = Finding.objects.select_related("audit").filter(audit__organization=tenant)
+
+        standard = self.request.query_params.get("standard")
+        audit_id = self.request.query_params.get("audit_id")
+
+        # For LIST: require standard (prevents mixed-standard listing)
+        if self.action == "list":
+            if not standard:
+                return Finding.objects.none()
+            qs = qs.filter(audit__standard=standard)
+
+        # For detail/update: standard is optional; tenant boundary already enforced.
+        # If standard provided, enforce it too.
+        if standard:
+            qs = qs.filter(audit__standard=standard)
+
+        if audit_id:
+            qs = qs.filter(audit__id=audit_id)
+
+        return qs.order_by("-id")
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -95,41 +155,30 @@ class FindingViewSet(viewsets.ModelViewSet):
 
         if new_status:
             instance.status = new_status
-            if new_status == "Closed":
-                instance.completion_date = date.today()
-            else:
-                instance.completion_date = None
-            instance.save()
+            instance.completion_date = date.today() if new_status == "Closed" else None
+            instance.save(update_fields=["status", "completion_date"])
 
         return Response(self.serializer_class(instance).data)
 
-
 # =========================================================
-#   COMPLIANCE CLAUSE VIEWSET
-#   - CRUD + evidence upload/delete
-#   - Forward-only status transitions
-#   - Evidence-required rules for MI/O
-#   - ✅ Natural clause sorting (DB-level)
+#   COMPLIANCE CLAUSE VIEWSET (CORRECT & HARDENED)
 # =========================================================
 class ComplianceClauseViewSet(viewsets.ModelViewSet):
     serializer_class = ComplianceClauseSerializer
+    queryset = ComplianceClause.objects.all()
 
     def get_queryset(self):
-        """
-        Natural numeric sorting:
-        4.1 < 4.2 < 8.2 < 8.10 < 10.1
-        """
-        return (
-            ComplianceClause.objects
-            .annotate(
-                dot_pos=StrIndex("clause_number", Value(".")),
-                part1=Cast(Substr("clause_number", 1, F("dot_pos") - 1), IntegerField()),
-                part2=Cast(Substr("clause_number", F("dot_pos") + 1), IntegerField()),
-            )
-            .order_by("part1", "part2")
-        )
+        qs = ComplianceClause.objects.all()
+        standard = self.request.query_params.get("standard")
 
-    # ---------- Status transition guard (forward-only) ----------
+        # ✅ Only filter by standard for LIST views
+        if self.action == "list" and standard:
+            qs = qs.filter(standard=standard)
+
+        # ✅ Always enforce numeric ordering
+        return qs.order_by("clause_major", "clause_minor")
+
+    # ---------- Forward-only status transitions ----------
     def partial_update(self, request, *args, **kwargs):
         clause = self.get_object()
         new_status = request.data.get("status")
@@ -145,32 +194,27 @@ class ComplianceClauseViewSet(viewsets.ModelViewSet):
             "O": None,
         }
 
-        current = clause.status
-        expected_next = allowed_next.get(current)
+        expected = allowed_next.get(clause.status)
 
-        if expected_next is None:
+        if expected is None:
             return Response(
-                {"error": "Status is already at Optimized. Downgrades are not permitted."},
-                status=400,
+                {"error": "Already optimized. Downgrades are not permitted."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if new_status != expected_next:
+        if new_status != expected:
             return Response(
                 {
                     "error": "Invalid transition.",
-                    "detail": f"Allowed next state from '{current}' is '{expected_next}'.",
+                    "detail": f"Expected '{expected}' after '{clause.status}'.",
                 },
-                status=400,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Evidence required for MI or O
         if new_status in {"MI", "O"} and not clause.evidence:
             return Response(
-                {
-                    "error": "Evidence required.",
-                    "detail": f"Cannot move to '{new_status}' without uploading evidence first.",
-                },
-                status=400,
+                {"error": "Evidence required before this transition."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         return super().partial_update(request, *args, **kwargs)
@@ -182,13 +226,14 @@ class ComplianceClauseViewSet(viewsets.ModelViewSet):
         file = request.FILES.get("evidence") or request.FILES.get("file")
 
         if not file:
-            return Response({"error": "No file uploaded"}, status=400)
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
         clause.evidence = file
         clause.save()
-
-        # ✅ Return full updated clause JSON
-        return Response(ComplianceClauseSerializer(clause).data, status=200)
+        return Response(
+            ComplianceClauseSerializer(clause).data,
+            status=status.HTTP_200_OK,
+        )
 
     @evidence.mapping.delete
     def delete_evidence(self, request, pk=None):
@@ -197,53 +242,50 @@ class ComplianceClauseViewSet(viewsets.ModelViewSet):
 
         clause.evidence.delete(save=True)
 
-        downgraded_from = None
-        downgraded_to = None
-
         if clause.status == "O":
-            downgraded_from, downgraded_to = "O", "MI"
             clause.status = "MI"
-            clause.save()
         elif clause.status == "MI":
-            downgraded_from, downgraded_to = "MI", "IP"
             clause.status = "IP"
-            clause.save()
 
-        if not had_file:
-            return Response({"message": "No evidence existed."})
+        clause.save()
 
-        if downgraded_from:
-            return Response(
-                {
-                    "message": "Evidence removed.",
-                    "status_downgraded": True,
-                    "from": downgraded_from,
-                    "to": downgraded_to,
-                }
-            )
-
-        return Response({"message": "Evidence removed."})
+        return Response(
+            {
+                "message": "Evidence removed.",
+                "status_downgraded": had_file,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 # =========================================================
-#   DASHBOARD STATS (0–4 scoring model, lite output)
+#   DASHBOARD STATS (STANDARD-AWARE, SAFE DEFAULT)
 # =========================================================
 @api_view(["GET"])
 def dashboard_stats(request):
     today = date.today()
 
+    # ✅ Safe default prevents frontend crash
+    standard = request.query_params.get("standard", "iso-7101")
+
     # === RISKS ===
     active_risks = Risk.objects.filter(status="Open", archived=False).count()
-    risk_heatmap = Risk.objects.filter(archived=False).values("risk_level").annotate(
-        count=Count("id")
+
+    risk_heatmap = (
+        Risk.objects.filter(archived=False)
+        .values("risk_level")
+        .annotate(count=Count("id"))
     )
-    heatmap_dict = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
+
+    heatmap = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
     for r in risk_heatmap:
-        heatmap_dict[r["risk_level"]] = r["count"]
+        heatmap[r["risk_level"]] = r["count"]
 
     # === AUDITS ===
     audits_completed = Audit.objects.filter(status="Completed").count()
-    audits_overdue = Audit.objects.filter(status="Scheduled", date__lt=today).count()
+    audits_overdue = Audit.objects.filter(
+        status="Scheduled", date__lt=today
+    ).count()
 
     # === FINDINGS ===
     open_findings = Finding.objects.filter(status="Open").count()
@@ -251,38 +293,29 @@ def dashboard_stats(request):
         status="Open", target_date__lt=today
     ).count()
 
-    # === COMPLIANCE (0–100 score)
-    comp_breakdown = (
-        ComplianceClause.objects.values("status")
-        .annotate(count=Count("id"))
-        .order_by()
-    )
+    # === COMPLIANCE (PER STANDARD) ===
+    clauses = ComplianceClause.objects.filter(standard=standard)
+    total = clauses.count()
 
-    status_counts = {"NI": 0, "P": 0, "IP": 0, "MI": 0, "O": 0}
-    for row in comp_breakdown:
-        status_counts[row["status"]] = row["count"]
+    breakdown = clauses.values("status").annotate(count=Count("id"))
+    counts = {"NI": 0, "P": 0, "IP": 0, "MI": 0, "O": 0}
+    for row in breakdown:
+        counts[row["status"]] = row["count"]
 
-    STATUS_POINTS = {"NI": 0, "P": 1, "IP": 2, "MI": 3, "O": 4}
-    MAX_POINTS = 34 * 4
-
-    earned_points = sum(status_counts[s] * STATUS_POINTS[s] for s in status_counts)
-    compliance_score = round((earned_points / MAX_POINTS) * 100) if MAX_POINTS else 0
+    points = {"NI": 0, "P": 1, "IP": 2, "MI": 3, "O": 4}
+    earned = sum(counts[s] * points[s] for s in counts)
+    max_points = total * 4
+    score = round((earned / max_points) * 100) if max_points else 0
 
     return Response(
         {
             "active_risks": active_risks,
-            "risk_heatmap": heatmap_dict,
+            "risk_heatmap": heatmap,
             "audits_completed": audits_completed,
             "audits_overdue": audits_overdue,
             "open_findings": open_findings,
             "overdue_findings": overdue_findings,
-            "compliance_status": {
-                "not_implemented": status_counts["NI"],
-                "planned": status_counts["P"],
-                "in_progress": status_counts["IP"],
-                "mostly_implemented": status_counts["MI"],
-                "optimized": status_counts["O"],
-            },
-            "compliance_score": compliance_score,
+            "compliance_status": counts,
+            "compliance_score": score,
         }
     )

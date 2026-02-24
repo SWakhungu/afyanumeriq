@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { apiFetch } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
+import { useSearchParams } from "next/navigation";
 
 type Organization = {
   id: number;
@@ -33,9 +34,9 @@ type User = {
 
 export default function SettingsPage() {
   const { show } = useToast();
-  const [activeTab, setActiveTab] = useState<"organization" | "users">(
-    "organization"
-  );
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as "organization" | "users") || "organization";
+  const [activeTab, setActiveTab] = useState<"organization" | "users">(initialTab);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
@@ -179,20 +180,22 @@ export default function SettingsPage() {
     }
   };
 
-  const deactivateUser = async (userId: number, username: string) => {
-    if (!confirm(`Deactivate user "${username}"?`)) return;
-    try {
-      setSaving(true);
-      await apiFetch(`/settings/users/${userId}/`, { method: "DELETE" });
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
-      show("User deactivated ✅", "success");
-    } catch (err: any) {
-      show(`Failed to deactivate user: ${err.message}`, "error");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+      const deactivateUser = async (userId: number, username: string) => {
+        if (!confirm(`Deactivate user "${username}"?`)) return;
+        try {
+          setSaving(true);
+          await apiFetch(`/settings/users/${userId}/`, { method: "DELETE" });
+          setUsers((prev) => prev.filter((u) => u.id !== userId));
+          setUsers((prev) =>  
+            prev.map((u) => (u.id === userId ? { ...u, is_active: false } : u))
+          );
+          show("User deactivated ✅", "success");
+        } catch (err: any) {
+          show(`Failed to deactivate user: ${err.message}`, "error");
+        } finally {
+          setSaving(false);
+        }
+      };
   return (
     <div className="p-6 space-y-6">
       <div>
